@@ -3,7 +3,7 @@
 /*  Author  : Stefan Zakutansky ATU.ie student                                        */
 /*  Date    : 25. 8.2023                                                              */
 /*  Notes   : The code operates on Queuing architecture to faciliate a "mutex" for    */
-/*            global variables. The system measures a soil moisture by capacitive   	*/
+/*            global variables. The system measures a soil moisture by capacitive    	*/
 /*            sensor. The values are computed by PID alghoritm to calculate           */
 /*            a pump runtime acordingly. The sampling rate of 4 minutes provides      */
 /*            favorable soil condition to mantain healthy growth of the plant.        */
@@ -50,7 +50,7 @@ byte count =10;
 bool pumpState = false;
 unsigned long moistureCheckInterval = 120000; // Interval to check moisture 2 minute)
 unsigned long pumpRunTime = 0; // How long to run the pump (60 seconds)
-unsigned int pumpRunTimePerDay =0;
+volatile unsigned int pumpRunTimePerDay =0;
 unsigned long countdownTime = 0; // Holds the countdown time for display
 bool isCountingDown = true; // Indicates if a countdown is active
 int lastMoistureValue = 0; // Stores the last measured soil moisture value
@@ -69,7 +69,6 @@ unsigned long lastTime = 0;
 // Menu variables controlled by encoder
 int menuIndex = 0;  // To keep track of the current menu item
 bool isAdjusting = false;
-bool isEditingSetpoint = false;
 bool isFlashing = false;
 unsigned long lastFlashTime = 0;
 unsigned long flashInterval = 250; // Flash interval in milliseconds
@@ -77,14 +76,14 @@ unsigned long flashInterval = 250; // Flash interval in milliseconds
 
 // Flow sensor pin and variables
 #define FLOW_SENSOR_PIN 5
-volatile int flowPulseCount = 0;
+volatile unsigned int flowPulseCount = 0;
 float flowRate = 0.0;
 float waterUsedToday = 0.0; // Liters used today
 const float dailyLimit = 1.5; // Daily limit in liters
 
 //data logging variables
 unsigned long startingTimeStamp;
-unsigned long oneDay = 86400000;
+unsigned long oneDay = 86400000UL;
 
 // Structure for a task in the queue
 struct Task {
@@ -97,7 +96,29 @@ struct Task {
 const int queueSize = 10;
 Task taskQueue[queueSize];
 int queueStart = 0;
-int queueEnd = 0;
+int queueEnd = 0;// Function to add a task to the queue
+void enqueue(void (*function)(), unsigned long delayTime) {
+  unsigned long currentTime = millis();
+  taskQueue[queueEnd].function = function;
+  taskQueue[queueEnd].executeTime = currentTime + delayTime;
+  taskQueue[queueEnd].isCountingDown = isCountingDown;
+  queueEnd = (queueEnd + 1) % queueSize;
+  countdownTime = delayTime; // Set the countdown time  
+}
+
+// Function to execute and remove the first task in the queue
+void dequeue() {
+  if (queueStart != queueEnd) { // Check if the queue is not empty
+    unsigned long currentTime = millis();
+    if (currentTime >= taskQueue[queueStart].executeTime) {
+      taskQueue[queueStart].function(); // Execute the task
+      taskQueue[queueEnd].isCountingDown = isCountingDown;
+      queueStart = (queueStart + 1) % queueSize; // Remove the task from the queue
+    }
+  }
+}
+
+
 
 // Handle encoder button press
 void readEncoderButton(){
@@ -110,7 +131,9 @@ void readEncoderButton(){
          case 1 : tempDailyLimit = dailyLimit;  // Load current daily limit
                  break
          case 2 : pumpRunTimePerDay;  // Load current daily pump run time
-                 break;   
+                 break;  
+        default:
+                break;
       }    
     } 
     else {
@@ -123,12 +146,14 @@ void readEncoderButton(){
                  break
          case 2 : pumpRunTimePerDay;  // Load current daily pump run time
                  break;   
+         default:
+                break;
       }    
       delay(200);  // Debounce delay
     }
   }
 
- // If in adjusting mode, handle encoder rotation to change value
+  //If in adjusting mode, handle encoder rotation to change value
   if (isAdjusting) {
     long newPosition = myEnc.read() / 4; // Adjust sensitivity as needed
     if (newPosition != 0) {
@@ -163,7 +188,9 @@ void readEncoderButton(){
       menuIndex = constrain(menuIndex, 0, 2); // Constrain within the number of menu item
       myEnc.write(0); // Reset encoder position to zero
     }
-  }  
+  }
+ enqueue(readEncoderButton, 0);  //Start Encoder button  immediately
+}
 
 //Calculate PID controled for pump runtime by checking if soil moister near setpoint
 float computePID(int input) {
@@ -190,30 +217,7 @@ float computePID(int input) {
   // Save error and time for next calculation
   lastError = error;
   lastTime = currentTime;
-  return output;  //time for pump to run
-  
-}
-
-// Function to add a task to the queue
-void enqueue(void (*function)(), unsigned long delayTime) {
-  unsigned long currentTime = millis();
-  taskQueue[queueEnd].function = function;
-  taskQueue[queueEnd].executeTime = currentTime + delayTime;
-  taskQueue[queueEnd].isCountingDown = isCountingDown;
-  queueEnd = (queueEnd + 1) % queueSize;
-  countdownTime = delayTime; // Set the countdown time  
-}
-
-// Function to execute and remove the first task in the queue
-void dequeue() {
-  if (queueStart != queueEnd) { // Check if the queue is not empty
-    unsigned long currentTime = millis();
-    if (currentTime >= taskQueue[queueStart].executeTime) {
-      taskQueue[queueStart].function(); // Execute the task
-      taskQueue[queueEnd].isCountingDown = isCountingDown;
-      queueStart = (queueStart + 1) % queueSize; // Remove the task from the queue
-    }
-  }
+  return output;  //time for pump to run  
 }
 
 // Task to check soil moisture
@@ -238,14 +242,13 @@ void checkMoisture(){
   if (pidOutput > 0 && !pumpState ) {
     pumpRunTime = ((unsigned long)pidOutput);   // cast to positive number from PID-calculation
     pumpRunTimePerDay += pumpRunTime;         //accumulate the total runtim
-    Serial.println("Moisture low. Turning on the pump...");calculateWaterFlow
-    
+    Serial.println("Moisture low. Turning on the pump...");calculateWaterFlow    
     digitalWrite(relayPin, LOW); // Turn on the pump, which is active LO
     pumpState = true;    
     Serial.print("pump runtime:");
     Serial.println(pumpRunTime);   
     isCountingDown = true;  //now print new data to screen
-    attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowSensorPulse, RISING);  //Enable ISR
+    attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowSensorISR, RISING);  //Enable ISR
     enqueue(calculateWaterFlow,0);  //monitor flow meter while pump is on
     enqueue(stopPump, pumpRunTime); // Schedule a task to stop the pump after 30 seconds    
     enqueue(checkMoisture, moistureCheckInterval); // Re-schedule the moisture check task
@@ -275,7 +278,7 @@ void stopPump() {
 }
 
 // Interrupt service routine for flow sensor
-void flowSensorPulse() {
+void flowSensorISR() {
   flowPulseCount++;
 }
 
@@ -293,7 +296,7 @@ void calculateWaterFlow() {
       flowPulseCount = 0;
       lastCalcTime = currentTime;
       }  
-  enqueue(calculateWaterFlow,0);         //monitor flow meter while pump is on 
+  enqueue(calculateWaterFlow,0);         //monitor flow meter while pump is on imedietly
   lastCheckTime = currentTimeReschedule; 
   } 
 }
@@ -341,7 +344,7 @@ void updateDisplay() {
     else if (taskQueue[queueStart].function == stopPump) {
       tft.fillRect(60,80,50,25,ST7735_BLACK);  //refresh countdown field
       tft.setCursor(5, 55);
-      tft.println("Pump turn off");
+      tft.println("Pump off in");
     }
     else if (taskQueue[queueStart].function == calculateWaterFlow) {
       tft.fillRect(60,80,50,25,ST7735_BLACK);  //refresh countdown field
@@ -351,7 +354,6 @@ void updateDisplay() {
    
    //4th line
     tft.setCursor(5, 80);
-    tft.setTextSize(2);
     tft.println("TIME");
     tft.setCursor(60, 80);
     tft.println(buff); // Display countdown in seconds right side justified
@@ -363,25 +365,25 @@ void updateDisplay() {
     tft.println("MENU:");
     tft.setCursor(75, 105);
     switch (menuIndex){
-      case 0: tft.setTextColor(isAdjusting && isFlashing ? ST7735_RED : ST7735_RED); // Flashing text color red when editing
+      case 0: tft.setTextColor(isAdjusting && isFlashing ? ST7735_RED : ST7735_GREEN); // Flashing text color red when editing
               tft.println("menuIndex");
               tft.setTextColor(ST7735_GREEN);
               tft.setCursor(5, 130);
               tft.println("SETPOINT: ");
-              tft.setTextColor(isAdjusting && isFlashing ? ST7735_RED : ST7735_RED); // Flashing text color red when editing
+              tft.setTextColor(isAdjusting && isFlashing ? ST7735_RED : ST7735_GREEN); // Flashing text color red when editing
               tft.print(isAdjusting ? tempSetpoint : setpoint);     
               tft.println(" %");
               break;
-       case 1: tft.setTextColor(isAdjusting && isFlashing ? ST7735_RED : ST7735_RED); // Flash if adjusting
+       case 1: tft.setTextColor(isAdjusting && isFlashing ? ST7735_RED : ST7735_GREEN); // Flash if adjusting
                tft.println("menuIndex");
                tft.setTextColor(ST7735_GREEN);
                tft.setCursor(5, 130);
                tft.print("Water Limit: ");
-               tft.setTextColor(isAdjusting && isFlashing ? ST7735_RED : ST7735_RED); // Flashing text color red when editing
+               tft.setTextColor(isAdjusting && isFlashing ? ST7735_RED : ST7735_GREEN); // Flashing text color red when editing
                tft.print(isAdjusting ? tempDailyLimit : dailyLimit, 1);
                tft.print(" L");
                break;
-        case 2: tft.setTextColor(isAdjusting && isFlashing ? ST7735_RED : ST7735_RED); // Flash if adjusting
+        case 2: tft.setTextColor(isAdjusting && isFlashing ? ST7735_RED : ST7735_GREEN); // Flash if adjusting
                 tft.println("menuIndex");
                 tft.setTextColor(ST7735_GREEN);
                 tft.setCursor(5, 130);
@@ -394,6 +396,8 @@ void updateDisplay() {
     }      
    tft.setTextColor(ST7735_GREEN); // Normal text color 
   }  
+ enqueue(updateDisplay, 0);  //Start Update the display   immediately
+ 
 }
 
 //Graphics for screen startup
@@ -433,10 +437,9 @@ void setup() {
   digitalWrite(relayPin, HIGH); // Initially turn off the pump
   pinMode(ENCODER_SW, INPUT_PULLUP); // Set encoder button as input with internal pull-up
   pinMode(FLOW_SENSOR_PIN, INPUT);
-  /* Initialize TFT 1.77 inch screen*/
+  // Initialize TFT 1.77 inch screen
   tft.initR(INITR_BLACKTAB);    
   tft.fillScreen(ST7735_BLACK);
-
   //run intro graphics
   tft.drawRoundRect(3, 5, 122, 150,5, ST7735_BLUE);
   tft.setCursor(30, 20);
@@ -454,10 +457,11 @@ void setup() {
     startIpDisplay(); 
     delay(500);   
   }
-  tft.fillScreen(ST7735_BLACK); // Clear the screen (white background)
- 
+  tft.fillScreen(ST7735_BLACK); // Clear the screen (white background) 
   // Schedule the first moisture check
   enqueue(checkMoisture, 0); // Start meassuring soil moisture immediately
+  enqueue(readEncoderButton, 0);  //Start Encoder button   immediately
+  enqueue(updateDisplay, 0);  //Start Update the display   immediately  
   startingTimeStamp = millis();
 }
 
@@ -470,12 +474,6 @@ void dataLoggingForPumpRunTimeTotal(){
   }
 }
 
-
-
-
 void loop() {  
   dequeue(); // Execute tasks as their time comes
-  updateDisplay(); // Update the display with the countdown and moisture value
-  readEncoderButton();  //Encoder button
-   
 }
