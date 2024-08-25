@@ -65,8 +65,8 @@ float lastError = 0;
 float integral = 0;
 unsigned long lastTime = 0;
  
-//Encoder variables
-// Menu variables
+
+// Menu variables controlled by encoder
 int menuIndex = 0;  // To keep track of the current menu item
 bool isAdjusting = false;
 bool isEditingSetpoint = false;
@@ -275,8 +275,37 @@ void updateDisplay() {
     tft.setCursor(105, 5);
     tft.println("%");
 
+    //2nd line
+    //tft.setCursor(5, 30);
+    //tft.setTextSize(2);
+    //tft.println("TASK:");
 
+    //3nd line
+    if (taskQueue[queueStart].function == checkMoisture) {
+      tft.fillRect(60,55,50,25,ST7735_BLACK);  //refresh countdown field  
+      tft.setCursor(55, 30);
+      tft.println("Soil Check");
+    } 
+    else if (taskQueue[queueStart].function == stopPump) {
+      tft.fillRect(5,55,50,25,ST7735_BLACK);  //refresh countdown field
+      tft.setCursor(55, 30);
+      tft.println("Pump on");
+    }
+    else if (taskQueue[queueStart].function == stopPump) {
+      tft.fillRect(5,55,50,25,ST7735_BLACK);  //refresh countdown field
+      tft.setCursor(55, 30);
+      tft.println("Pump on");
+    }
 
+   //third line
+    tft.setCursor(5, 55);
+    tft.setTextSize(2);
+    tft.println("TIME");
+    tft.setCursor(60, 55);
+    tft.println(buff); // Display countdown in seconds right side justified
+    tft.setCursor(100, 55);
+    tft.println("s");
+   
     //second linre
     tft.setCursor(5, 30);
     tft.println("SET:");
@@ -309,31 +338,9 @@ void updateDisplay() {
 
 
     
-    //third line
-    tft.setCursor(5, 80);
-    tft.setTextSize(2);
-    tft.println("TIME");
-    tft.setCursor(60, 80);
-    tft.println(buff); // Display countdown in seconds right side justified
-    tft.setCursor(100, 80);
-    tft.println("s");
+    
 
-    //4th line
-    //tft.setCursor(5, 80);
-    //tft.setTextSize(2);
-    //tft.println("CURRENT TASK:");
-
-    //5th line
-    if (taskQueue[queueStart].function == checkMoisture) {
-      tft.fillRect(60,55,50,25,ST7735_BLACK);  //refresh countdown field  
-      tft.setCursor(5, 105);
-      tft.println("Soil Check");
-    } 
-    else if (taskQueue[queueStart].function == stopPump) {
-      tft.fillRect(60,55,50,25,ST7735_BLACK);  //refresh countdown field
-      tft.setCursor(5, 105);
-      tft.println("Pump on");
-    }
+  
 
     //6th line     
     tft.setCursor(5, 130);  
