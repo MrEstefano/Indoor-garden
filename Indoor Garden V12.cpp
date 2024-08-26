@@ -19,7 +19,8 @@
 #include <Adafruit_ST7735.h>
 #include <Wire.h>
 #include <SPI.h>
-#include <Encoder.h> 
+#include <ClickEncoder.h>
+#include <TimerOne.h>
 
 // Pin definitions for the 1.77-inch TFT (ST7735)
 #define TFT_CS  6
@@ -34,6 +35,7 @@
 #define ENCODER_SW  5 
 
 // constant variables
+#define FLOW_SENSOR_PIN 9
 #define relayPin 2           /* Pump is contrpolled via PUMP+ on PCB*/
 #define moisturePin A0        /* Capacitive moisture sensor is connected to SOIL on PCB*/
 #define drySoil 800         /* dry soil moisture value from calibration*/
@@ -42,8 +44,39 @@
 //TFT screen entity
 Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK, TFT_RST);
 
-//encoder entity
-Encoder myEnc(ENCODER_CLK, ENCODER_DT); // Create an Encoder object
+
+   
+
+int menuitem = 1;
+int frame = 1;
+int page = 1;
+int lastMenuItem = 1;
+
+String menuItem1 = "Setpoint";
+String menuItem2 = "Flow lim";
+String menuItem3 = "Proport";
+String menuItem4 = "Integral";
+String menuItem5 = "PUMP: ON";
+String menuItem6 = "Reset";
+
+//boolean backlight = true;
+//int contrast=60;
+int flow_limit = 50;
+
+//String language[3] = { "EN", "ES", "EL" };
+//int selectedLanguage = 0;
+
+// difficulty[2] = { "EASY", "HARD" };
+//int selectedDifficulty = 0;
+
+boolean up = false;
+boolean down = false;
+boolean middle = false;
+
+ClickEncoder *encoder;
+int16_t last, value;
+
+
 
 //global variables
 byte count =10;
@@ -66,24 +99,20 @@ float integral = 0;
 unsigned long lastTime = 0;
  
 
-// Menu variables controlled by encoder
-int menuIndex = 0;  // To keep track of the current menu item
-bool isAdjusting = false;
-bool isFlashing = false;
-unsigned long lastFlashTime = 0;
-unsigned long flashInterval = 250; // Flash interval in milliseconds
+
 
 
 // Flow sensor pin and variables
-#define FLOW_SENSOR_PIN 5
+
 volatile unsigned int flowPulseCount = 0;
 float flowRate = 0.0;
 float waterUsedToday = 0.0; // Liters used today
-const float dailyLimit = 1.5; // Daily limit in liters
+float dailyLimit = 1.5; // Daily limit in liters
+float tempDailyLimit= 1.5;
 
 //data logging variables
 unsigned long startingTimeStamp;
-unsigned long oneDay = 86400000UL;
+const unsigned long resetInterval = 86400000UL; // 24 hours in milliseconds
 
 // Structure for a task in the queue
 struct Task {
@@ -96,101 +125,11 @@ struct Task {
 const int queueSize = 10;
 Task taskQueue[queueSize];
 int queueStart = 0;
-int queueEnd = 0;// Function to add a task to the queue
-void enqueue(void (*function)(), unsigned long delayTime) {
-  unsigned long currentTime = millis();
-  taskQueue[queueEnd].function = function;
-  taskQueue[queueEnd].executeTime = currentTime + delayTime;
-  taskQueue[queueEnd].isCountingDown = isCountingDown;
-  queueEnd = (queueEnd + 1) % queueSize;
-  countdownTime = delayTime; // Set the countdown time  
-}
-
-// Function to execute and remove the first task in the queue
-void dequeue() {
-  if (queueStart != queueEnd) { // Check if the queue is not empty
-    unsigned long currentTime = millis();
-    if (currentTime >= taskQueue[queueStart].executeTime) {
-      taskQueue[queueStart].function(); // Execute the task
-      taskQueue[queueEnd].isCountingDown = isCountingDown;
-      queueStart = (queueStart + 1) % queueSize; // Remove the task from the queue
-    }
-  }
-}
+int queueEnd = 0;
 
 
-
-// Handle encoder button press
-void readEncoderButton(){
-  if (digitalRead(ENCODER_SW) == LOW) {
-    if (!isAdjusting) {
-      isAdjusting = true;  // Enter adjustment mode
-       switch (menuIndex){
-         case 0 : tempSetpoint = setpoint;  // Load current setpoint
-                 break;
-         case 1 : tempDailyLimit = dailyLimit;  // Load current daily limit
-                 break
-         case 2 : pumpRunTimePerDay;  // Load current daily pump run time
-                 break;  
-        default:
-                break;
-      }    
-    } 
-    else {
-      //Serial.println("button was pressed ");
-       isAdjusting = false;  // Exit adjustment mode
-      switch (menuIndex){
-         case 0 : setpoint = tempSetpoint;  // Save adjusted setpoint
-                 break;
-         case 1 : dailyLimit = tempDailyLimit;  // Save adjusted daily limit
-                 break
-         case 2 : pumpRunTimePerDay;  // Load current daily pump run time
-                 break;   
-         default:
-                break;
-      }    
-      delay(200);  // Debounce delay
-    }
-  }
-
-  //If in adjusting mode, handle encoder rotation to change value
-  if (isAdjusting) {
-    long newPosition = myEnc.read() / 4; // Adjust sensitivity as needed
-    if (newPosition != 0) {
-     switch (menuIndex){
-              //Moisture treashold Setpint item in menu list      
-      case 0: tempSetpoint -= newPosition;                   
-              tempSetpoint = constrain(tempSetpoint, 0, 100); // Constrain within valid range       
-              tft.fillRect(75,105,35,25,ST7735_BLACK);  //menu point block reset
-              tft.fillRect(5,130,128,25,ST7735_BLACK);  //menu item and its value block reset
-              break;
-               //Water limit setpoint item in menu list
-       case 1: tempDailyLimit -= newPosition * 0.1; // Adjust daily limit in 0.1L increments  
-               tempDailyLimit = constrain(tempDailyLimit, 0.1, 10.0); // Constrain within valid range
-               tft.fillRect(75,105,35,25,ST7735_BLACK);  //menu point block reset     
-               tft.fillRect(5,130,128,25,ST7735_BLACK);  //menu item and its value block reset
-               break;
-                //pump run dataloger
-        case 2: tft.fillRect(75,105,35,25,ST7735_BLACK);  //menu point block reset     
-                tft.fillRect(5,130,128,25,ST7735_BLACK);  //menu item and its value block reset
-                break;
-          default: 
-                break;  
-      }         
-      myEnc.write(0); // Reset encoder position to zero
-    }
-  } 
-  else {
-    // Handle encoder rotation to navigate menu
-    long newPosition = myEnc.read() / 4;
-    if (newPosition != 0) {
-      menuIndex -= newPosition;
-      menuIndex = constrain(menuIndex, 0, 2); // Constrain within the number of menu item
-      myEnc.write(0); // Reset encoder position to zero
-    }
-  }
- enqueue(readEncoderButton, 0);  //Start Encoder button  immediately
-}
+          
+  
 
 //Calculate PID controled for pump runtime by checking if soil moister near setpoint
 float computePID(int input) {
@@ -220,8 +159,31 @@ float computePID(int input) {
   return output;  //time for pump to run  
 }
 
+// Function to add a task to the queue
+void enqueue(void (*function)(), unsigned long delayTime) {
+  unsigned long currentTime = millis();
+  taskQueue[queueEnd].function = function;
+  taskQueue[queueEnd].executeTime = currentTime + delayTime;
+  taskQueue[queueEnd].isCountingDown = isCountingDown;
+  queueEnd = (queueEnd + 1) % queueSize;
+  countdownTime = delayTime; // Set the countdown time  
+}
+
+// Function to execute and remove the first task in the queue
+void dequeue() {
+  if (queueStart != queueEnd) { // Check if the queue is not empty
+    unsigned long currentTime = millis();
+    if (currentTime >= taskQueue[queueStart].executeTime) {
+      taskQueue[queueStart].function(); // Execute the task
+      taskQueue[queueEnd].isCountingDown = isCountingDown;
+      queueStart = (queueStart + 1) % queueSize; // Remove the task from the queue
+    }
+  }
+}
+
 // Task to check soil moisture
 void checkMoisture(){    
+  isCountingDown=false; //make sure we have actual data before printing to screent   
   lastMoistureValue = analogRead(moisturePin); // Read the moisture level
   Serial.print("Raw Soil Moisture Level: ");
   Serial.println(lastMoistureValue);
@@ -235,21 +197,23 @@ void checkMoisture(){
   Serial.print("PID output in ms: ");
   Serial.println(pidOutput); 
 
-  isCountingDown=false; //make sure we have actual data before printing to screent   
+  isCountingDown = true;  //now print new data to screen
   tft.fillRect(65,5,25,25,ST7735_BLACK);  //refresh moisture field
-  tft.fillRect(5,55,128,25,ST7735_BLACK);  //refresh task block 
+  tft.fillRect(5,30,59,25,ST7735_BLACK);  //refresh task block 
  
   if (pidOutput > 0 && !pumpState ) {
+    isCountingDown = true;  //now print new data to screen
     pumpRunTime = ((unsigned long)pidOutput);   // cast to positive number from PID-calculation
     pumpRunTimePerDay += pumpRunTime;         //accumulate the total runtim
-    Serial.println("Moisture low. Turning on the pump...");calculateWaterFlow    
+    pumpRunTimePerDay = dataLoggingForTimeTotal(millis()); //check if 24h overflow happened
+    Serial.println("Moisture low. Turning on the pump...");    
     digitalWrite(relayPin, LOW); // Turn on the pump, which is active LO
     pumpState = true;    
     Serial.print("pump runtime:");
     Serial.println(pumpRunTime);   
     isCountingDown = true;  //now print new data to screen
-    attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowSensorISR, RISING);  //Enable ISR
-    enqueue(calculateWaterFlow,0);  //monitor flow meter while pump is on
+    //attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowSensorISR, RISING);  //Enable ISR
+    //enqueue(calculateWaterFlow,0);  //monitor flow meter while pump is on
     enqueue(stopPump, pumpRunTime); // Schedule a task to stop the pump after 30 seconds    
     enqueue(checkMoisture, moistureCheckInterval); // Re-schedule the moisture check task
   }
@@ -264,19 +228,20 @@ void checkMoisture(){
 // Task to stop the pump
 void stopPump() {
   if(pumpState){  //protection if user decides to increase sampling rate
+    isCountingDown = false; // Stop the countdown after task execution 
     Serial.print("Total pump run time in 24h:");
     Serial.println(pumpRunTimePerDay);
     Serial.println("Moisture low. Turning on the pump...");
-    isCountingDown = true; // Stop the countdown after task execution 
+    
     Serial.println("Turning off the pump...");
     digitalWrite(relayPin, HIGH); // Turn off the relay
-    dettachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN)); //Disable ISR
+    //detachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN)); //Disable ISR
     pumpState = false;
-    enqueue(dataLoggingForPumpRunTimeTotal,0); //Keep checking if 24h has passed
-    tft.fillRect(5,55,128,25,ST7735_BLACK);  //refresh task block 
+    //enqueue(dataLoggingForTimeTotal,0); //Keep checking if 24h has passed
+    tft.fillRect(5,30,59,25,ST7735_BLACK);  //refresh task block 
   }
 }
-
+/*
 // Interrupt service routine for flow sensor
 void flowSensorISR() {
   flowPulseCount++;
@@ -284,121 +249,22 @@ void flowSensorISR() {
 
 // Function to calculate water flow and usage
 void calculateWaterFlow() {
+  isCountingDown = true; // Stop the countdown after task execution 
   static unsigned long lastCalcTime = 0;
-  static unsigned long lastCheckTime = 0;
-  unsigned long currentTime = millis();
-  unsigned long currentTimeReschedule = millis();
-  unsigned long timeElapsed = currentTime - lastCalcTime;
-  if(currentTimeReschedule - lastCheckTime < pumpRuntime){   //keep rescheduling while pump runs
+  unsigned long currentTime = millis(); 
+  unsigned long timeElapsed = currentTime - lastCalcTime;  
     if (timeElapsed >= 1000) {                               // Calculate flow rate every second
-      flowRate = (flowPulseCount / 7.5) / (timeElapsed / 1000.0); // Liters per second
-      waterUsedToday += (flowRate * (timeElapsed / 1000.0)); // Update total water used
-      flowPulseCount = 0;
-      lastCalcTime = currentTime;
-      }  
-  enqueue(calculateWaterFlow,0);         //monitor flow meter while pump is on imedietly
-  lastCheckTime = currentTimeReschedule; 
-  } 
+    flowRate = (flowPulseCount / 7.5) / (timeElapsed / 1000.0); // Liters per second
+    waterUsedToday += (flowRate * (timeElapsed / 1000.0)); // Update total water used
+    flowPulseCount = 0;
+    lastCalcTime = currentTime;
+    }  
+  waterUsedToday = dataLoggingForTimeTotal(millis()); //check if 24h time period overflown   
 }
-
+*/
 // Function to update the TFT screen with the countdown and moisture value
-void updateDisplay() {
-  if (isCountingDown) {    
-    unsigned long currentTime = millis();
-    unsigned long timeRemaining = (taskQueue[queueStart].executeTime > currentTime) ?
-                                  (taskQueue[queueStart].executeTime - currentTime) : 0;
-    char buff[4]; // 3 characters + NUL
-    sprintf(buff, "%10d", timeRemaining / 1000);       // Right-justified long converted to seconds
 
-   //handle the interval between red and green interval
-   if (isAdjusting) {  
-     if (currentTime - lastFlashTime > flashInterval) {
-       isFlashing = !isFlashing;
-       lastFlashTime = currentTime;
-     }
-   }  
-   else {
-     isFlashing = false;
-   }
-
-    //1st line
-    tft.setTextSize(2);
-    tft.setCursor(5, 5);
-    tft.println("SOIL:");
-    tft.setCursor(65, 5);
-    tft.println(lastMoistureValue);
-    tft.setCursor(105, 5);
-    tft.println("%");
-
-    //2nd line
-    tft.setCursor(5, 30);
-    tft.setTextSize(2);
-    tft.println("TASK RUNING NOW:");
-
-    //3nd line
-    if (taskQueue[queueStart].function == checkMoisture) {
-      tft.fillRect(60,80,50,25,ST7735_BLACK);  //refresh countdown field  
-      tft.setCursor(5, 55);
-      tft.println("Soil moist Check");
-    } 
-    else if (taskQueue[queueStart].function == stopPump) {
-      tft.fillRect(60,80,50,25,ST7735_BLACK);  //refresh countdown field
-      tft.setCursor(5, 55);
-      tft.println("Pump off in");
-    }
-    else if (taskQueue[queueStart].function == calculateWaterFlow) {
-      tft.fillRect(60,80,50,25,ST7735_BLACK);  //refresh countdown field
-      tft.setCursor(5, 55);
-      tft.println("Water Flow check");
-    }
-   
-   //4th line
-    tft.setCursor(5, 80);
-    tft.println("TIME");
-    tft.setCursor(60, 80);
-    tft.println(buff); // Display countdown in seconds right side justified
-    tft.setCursor(100, 80);
-    tft.println("s");
-   
-    //5th linre
-    tft.setCursor(5, 105);
-    tft.println("MENU:");
-    tft.setCursor(75, 105);
-    switch (menuIndex){
-      case 0: tft.setTextColor(isAdjusting && isFlashing ? ST7735_RED : ST7735_GREEN); // Flashing text color red when editing
-              tft.println("menuIndex");
-              tft.setTextColor(ST7735_GREEN);
-              tft.setCursor(5, 130);
-              tft.println("SETPOINT: ");
-              tft.setTextColor(isAdjusting && isFlashing ? ST7735_RED : ST7735_GREEN); // Flashing text color red when editing
-              tft.print(isAdjusting ? tempSetpoint : setpoint);     
-              tft.println(" %");
-              break;
-       case 1: tft.setTextColor(isAdjusting && isFlashing ? ST7735_RED : ST7735_GREEN); // Flash if adjusting
-               tft.println("menuIndex");
-               tft.setTextColor(ST7735_GREEN);
-               tft.setCursor(5, 130);
-               tft.print("Water Limit: ");
-               tft.setTextColor(isAdjusting && isFlashing ? ST7735_RED : ST7735_GREEN); // Flashing text color red when editing
-               tft.print(isAdjusting ? tempDailyLimit : dailyLimit, 1);
-               tft.print(" L");
-               break;
-        case 2: tft.setTextColor(isAdjusting && isFlashing ? ST7735_RED : ST7735_GREEN); // Flash if adjusting
-                tft.println("menuIndex");
-                tft.setTextColor(ST7735_GREEN);
-                tft.setCursor(5, 130);
-                tft.print("Pump total: ");
-                tft.print(pumpRunTimePerDay/ 1000);   //print counter for total pump run
-                tft.print(" L");
-                break;
-          default: tft.setTextColor(ST7735_GREEN); // Normal text color 
-                break;  
-    }      
-   tft.setTextColor(ST7735_GREEN); // Normal text color 
-  }  
- enqueue(updateDisplay, 0);  //Start Update the display   immediately
- 
-}
+  
 
 //Graphics for screen startup
 void startIpDisplay(){
@@ -440,6 +306,7 @@ void setup() {
   // Initialize TFT 1.77 inch screen
   tft.initR(INITR_BLACKTAB);    
   tft.fillScreen(ST7735_BLACK);
+
   //run intro graphics
   tft.drawRoundRect(3, 5, 122, 150,5, ST7735_BLUE);
   tft.setCursor(30, 20);
@@ -458,22 +325,422 @@ void setup() {
     delay(500);   
   }
   tft.fillScreen(ST7735_BLACK); // Clear the screen (white background) 
+  Timer1.initialize(1000);
+  Timer1.attachInterrupt(timerIsr); 
+  
+  //encoder entity
+  encoder = new ClickEncoder(3, 4, 5);
+  encoder->setAccelerationEnabled(false);
+
+  last = encoder->getValue();
   // Schedule the first moisture check
   enqueue(checkMoisture, 0); // Start meassuring soil moisture immediately
-  enqueue(readEncoderButton, 0);  //Start Encoder button   immediately
-  enqueue(updateDisplay, 0);  //Start Update the display   immediately  
+ 
+  //lastTime = millis(); //Trigger the PID contrall
   startingTimeStamp = millis();
 }
 
 //24h log refresh
-void dataLoggingForPumpRunTimeTotal(){
-  unsigned long currentTimePump = millis();
-  if (currentTimePump - startingTimeStamp > oneDay) {
-    pumpRunTimePerDay = 0;
+int dataLoggingForTimeTotal(unsigned long currentTimePump){
+  int reset;
+  if (currentTimePump - startingTimeStamp > resetInterval) {
+    reset = 0;
     startingTimeStamp = currentTimePump;
   }
+  return reset;
 }
 
 void loop() {  
   dequeue(); // Execute tasks as their time comes
+  drawMenu();
+  readRotaryEncoder();
+
+
+   ClickEncoder::Button b = encoder->getButton();
+   if (b != ClickEncoder::Open) {
+   switch (b) {
+      case ClickEncoder::Clicked:
+         middle=true;
+         tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
+        break;
+    }
+  }    
+  
+  if (up && page == 1 ) {
+     
+    up = false;
+    if(menuitem==2 && frame ==2)
+    {
+      tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
+      frame--;
+    }
+
+     if(menuitem==4 && frame ==4)
+    {
+      tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
+      frame--;
+    }
+      if(menuitem==3 && frame ==3)
+    {
+      tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
+      frame--;
+    }
+    lastMenuItem = menuitem;
+    menuitem--;
+    if (menuitem==0)
+    {
+      tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
+      menuitem=1;
+    } 
+   tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh 
+  }else if (up && page == 2 && menuitem==1 ) {
+    up = false;
+    tft.fillRect(0,130,128,30,ST7735_BLACK);  //refresh
+    setpoint--;
+
+    
+  }
+  else if (up && page == 2 && menuitem==2 ) {
+    up = false;
+    tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
+    flow_limit--;
+  }
+  else if (up && page == 2 && menuitem==3 ) {
+    up = false;
+    tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
+    kp--;
+    
+  }
+    else if (up && page == 2 && menuitem==4 ) {
+    up = false;
+    tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
+    ki--;
+   
+  }
+
+  if (down && page == 1) //We have turned the Rotary Encoder Clockwise
+  {
+
+    down = false;
+    if(menuitem==3 && lastMenuItem == 2)
+    {
+      tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
+      frame ++;
+    }else  if(menuitem==4 && lastMenuItem == 3)
+    {
+      tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
+      frame ++;
+    }
+     else  if(menuitem==5 && lastMenuItem == 4 && frame!=4)
+    {
+      tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
+      frame ++;
+    }
+    lastMenuItem = menuitem;
+    menuitem++;  
+    if (menuitem==7) 
+    {
+      tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
+      menuitem--;
+    }
+  tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
+  }else if (down && page == 2 && menuitem==1) {
+    down = false;
+    tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
+    setpoint++;
+    
+  }
+  else if (down && page == 2 && menuitem==2) {
+    down = false;
+    tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
+    flow_limit++;
+  }
+   else if (down && page == 2 && menuitem==3 ) {
+    down = false;
+    tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
+    kp++;
+    
+  }
+  else if (down && page == 2 && menuitem==4 ) {
+    down = false;
+    tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
+    ki++;
+    
+  }
+  
+  if (middle) //Middle Button is Pressed
+  {
+    middle = false;
+   
+    if (page == 1 && menuitem==5) // Backlight Control 
+    {
+      if (pumpState) 
+      {
+        pumpState = false;
+        tft.fillRect(0,130,128,105,ST7735_BLACK);  //refresh
+        menuItem5 = "Pump: OFF";
+        digitalWrite(relayPin, HIGH); // Turn on the pump, which is active LO
+        }
+      else 
+      {
+        pumpState = true; 
+        tft.fillRect(0,130,128,105,ST7735_BLACK);  //refresh
+        menuItem5 = "Pump: ON";
+        digitalWrite(relayPin, LOW); // Turn on the pump, which is active LO
+       }
+    }
+
+    if(page == 1 && menuitem ==6)// Reset
+    {
+      resetDefaults();
+    }
+
+
+    else if (page == 1 && menuitem<=4) {
+      page=2;
+     }
+      else if (page == 2) 
+     {
+      page=1; 
+     }
+   }   
 }
+
+void drawMenu() {
+  if (isCountingDown) {    
+    unsigned long currentTime = millis();
+    unsigned long timeRemaining = (taskQueue[queueStart].executeTime > currentTime) ?
+                                  (taskQueue[queueStart].executeTime - currentTime) : 0;
+    char buff[6]; // 3 characters + NUL
+    sprintf(buff, "%3d", timeRemaining / 1000);       // Right-justified long converted to seconds
+
+   
+
+    //1st line
+    tft.setTextSize(2);
+    tft.setCursor(5, 5);
+    tft.println("SOIL:");
+    tft.setCursor(65, 5);
+    tft.println(lastMoistureValue);
+    tft.setCursor(105, 5);
+    tft.println("%");
+
+   
+    //3nd line
+    if (taskQueue[queueStart].function == checkMoisture) {
+      tft.fillRect(70,30,40,25,ST7735_BLACK);  //refresh countdown field  
+      tft.setCursor(5, 30);
+      tft.println("Check");
+    } 
+    else if (taskQueue[queueStart].function == stopPump) {
+      tft.fillRect(70,30,40,25,ST7735_BLACK);  //refresh countdown field
+      tft.setCursor(5, 30);
+      tft.println("Pump");
+    }
+    /*else if (taskQueue[queueStart].function == calculateWaterFlow) {
+      tft.fillRect(58,80,40,25,ST7735_BLACK);  //refresh countdown field
+      tft.setCursor(5, 55);
+      tft.println("Flow check");
+    }
+    */
+     
+    
+    tft.setCursor(70, 30);
+    //tft.setTextWrap(false);
+    tft.print(buff); // Display countdown in seconds right side justified
+    //tft.setCursor(105, 30);
+    //tft.setTextWrap(true);
+    tft.print("s");
+    }   
+  if (page==1) {    
+    
+    tft.setTextSize(2);
+    //tft.fillScreen(ST7735_BLACK);
+    tft.setTextColor(ST7735_GREEN, ST7735_BLACK);
+    tft.setCursor(3, 55);
+    tft.print("MAIN MENU");
+    tft.fillRect(0,72,128,2,ST7735_GREEN);  //draw a line
+    //tft.drawFastHLine(0,78,128,ST7735_GREEN);
+
+    if(menuitem==1 && frame ==1)
+    { 
+      //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh  
+      displayMenuItem(menuItem1, 80,true);
+      displayMenuItem(menuItem2, 105,false);
+      displayMenuItem(menuItem3, 130,false);
+    }
+    else if(menuitem == 2 && frame == 1)
+    {
+      //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
+      displayMenuItem(menuItem1, 80,false);
+      displayMenuItem(menuItem2, 105,true);
+      displayMenuItem(menuItem3, 130,false);
+    }
+    else if(menuitem == 3 && frame == 1)
+    {
+      //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
+      displayMenuItem(menuItem1, 80,false);
+      displayMenuItem(menuItem2, 105,false);
+      displayMenuItem(menuItem3, 130,true);
+    }
+     else if(menuitem == 4 && frame == 2)
+    {
+      //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
+      displayMenuItem(menuItem2, 80,false);
+      displayMenuItem(menuItem3, 105,false);
+      displayMenuItem(menuItem4, 130,true);
+    }
+
+      else if(menuitem == 3 && frame == 2)
+    {
+      //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
+      displayMenuItem(menuItem2, 80,false);
+      displayMenuItem(menuItem3, 105,true);
+      displayMenuItem(menuItem4, 130,false);
+    }
+    else if(menuitem == 2 && frame == 2)
+    {
+      //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
+      displayMenuItem(menuItem2, 80,true);
+      displayMenuItem(menuItem3, 105,false);
+      displayMenuItem(menuItem4, 130,false);
+    }
+    
+    else if(menuitem == 5 && frame == 3)
+    {
+      //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
+      displayMenuItem(menuItem3, 80,false);
+      displayMenuItem(menuItem4, 105,false);
+      displayMenuItem(menuItem5, 130,true);
+    }
+
+    else if(menuitem == 6 && frame == 4)
+    {
+      //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
+      displayMenuItem(menuItem4, 80,false);
+      displayMenuItem(menuItem5, 105,false);
+      displayMenuItem(menuItem6, 130,true);
+    }
+    
+      else if(menuitem == 5 && frame == 4)
+    {
+      //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
+      displayMenuItem(menuItem4, 80,false);
+      displayMenuItem(menuItem5, 105,true);
+      displayMenuItem(menuItem6, 130,false);
+    }
+      else if(menuitem == 4 && frame == 4)
+    {
+      //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
+      displayMenuItem(menuItem4, 80,true);
+      displayMenuItem(menuItem5, 105,false);
+      displayMenuItem(menuItem6, 130,false);
+    }
+    else if(menuitem == 3 && frame == 3)
+    {
+      //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
+      displayMenuItem(menuItem3, 80,true);
+      displayMenuItem(menuItem4, 105,false);
+      displayMenuItem(menuItem5, 130,false);
+    }
+        else if(menuitem == 2 && frame == 2)
+    {
+      //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
+      displayMenuItem(menuItem2, 80,true);
+      displayMenuItem(menuItem3, 105,false);
+      displayMenuItem(menuItem4, 130,false);
+    }
+    else if(menuitem == 4 && frame == 3)
+    {
+      //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
+      displayMenuItem(menuItem3, 80,false);
+      displayMenuItem(menuItem4, 105,true);
+      displayMenuItem(menuItem5, 130,false);
+    }   
+    
+  }
+  else if (page==2 && menuitem == 1)   {   
+   tft.fillRect(0,55,128,105,ST7735_BLACK);  //refresh  
+   displayIntMenuPage(menuItem1, setpoint);
+  }
+
+  else if (page==2 && menuitem == 2)   {
+   tft.fillRect(0,55,128,105,ST7735_BLACK);  //refresh 
+   displayIntMenuPage(menuItem2, flow_limit);
+  }
+  else if (page==2 && menuitem == 3)   {
+   tft.fillRect(0,55,128,105,ST7735_BLACK);  //refresh 
+   displayIntMenuPage(menuItem3, kp);
+  }
+  else if (page==2 && menuitem == 4)  {
+   tft.fillRect(0,55,128,105,ST7735_BLACK);  //refresh 
+   displayIntMenuPage(menuItem4, ki);
+  }
+  else if (page==2 && menuitem == 5)   {
+   tft.fillRect(0,55,128,105,ST7735_BLACK);  //refresh 
+   displayIntMenuPage(menuItem4, (int)pumpState);
+  }
+}
+  
+  void resetDefaults()  {
+    setpoint = 70;
+    flow_limit = 50;
+    kp = 2;
+    ki = 0.1;    
+    pumpState = true;
+    menuItem5 = "Pump: OFF";
+    
+  }
+
+  void timerIsr() {
+  encoder->service();
+}
+
+void displayIntMenuPage(String menuItem, int value)
+{
+    tft.setTextSize(2);  
+    tft.setTextColor(ST7735_GREEN, ST7735_BLACK);
+    tft.setCursor(15, 55);
+    tft.print(menuItem);
+    tft.fillRect(0,72,128,2,ST7735_GREEN);  //draw a line
+    //tft.drawFastHLine(0,60,128,ST7735_GREEN);
+    tft.setCursor(5, 80);
+    tft.print("Value");
+    tft.setTextSize(3);
+    tft.setCursor(5, 110);
+    tft.print(value);
+    tft.setTextSize(2);
+    tft.fillRect(0,130,128,30,ST7735_BLACK);  //refresh
+}
+
+
+void displayMenuItem(String item, int position, boolean selected)
+{
+    if(selected)
+    {
+      tft.setTextColor(ST7735_BLACK, ST7735_GREEN);  
+      tft.setCursor(0, position);
+      tft.print(">"+item);
+    }else
+    {
+      tft.setTextColor(ST7735_GREEN, ST7735_BLACK);
+      tft.setCursor(0, position);
+      tft.print(" "+item);
+    }
+  tft.setTextColor(ST7735_GREEN, ST7735_BLACK);  
+}
+
+void readRotaryEncoder(){
+  value += encoder->getValue();
+  
+  if (value/2 > last) {
+    last = value/2;
+    down = true;
+    delay(150);
+  }else   if (value/2 < last) {
+    last = value/2;
+    up = true;
+    delay(150);
+  }
+}
+
