@@ -41,42 +41,22 @@
 #define drySoil 800         /* dry soil moisture value from calibration*/
 #define wetSoil 410          /* wet soil moisture value from calibration*/
 
-//TFT screen entity
-Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK, TFT_RST);
-
-
-   
-
+//Menu vatiables
 int menuitem = 1;
 int frame = 1;
 int page = 1;
 int lastMenuItem = 1;
-
+boolean up = false;
+boolean down = false;
+boolean middle = false;
+ClickEncoder *encoder;
+int16_t last, value;
 String menuItem1 = "Setpoint";
 String menuItem2 = "Flow lim";
 String menuItem3 = "Proport";
 String menuItem4 = "Integral";
 String menuItem5 = "PUMP: ON";
 String menuItem6 = "Reset";
-
-//boolean backlight = true;
-//int contrast=60;
-int flow_limit = 50;
-
-//String language[3] = { "EN", "ES", "EL" };
-//int selectedLanguage = 0;
-
-// difficulty[2] = { "EASY", "HARD" };
-//int selectedDifficulty = 0;
-
-boolean up = false;
-boolean down = false;
-boolean middle = false;
-
-ClickEncoder *encoder;
-int16_t last, value;
-
-
 
 //global variables
 byte count =10;
@@ -97,22 +77,6 @@ float kd = 1.0;      // Derivative gain
 float lastError = 0;
 float integral = 0;
 unsigned long lastTime = 0;
- 
-
-
-
-
-// Flow sensor pin and variables
-
-volatile unsigned int flowPulseCount = 0;
-float flowRate = 0.0;
-float waterUsedToday = 0.0; // Liters used today
-float dailyLimit = 1.5; // Daily limit in liters
-float tempDailyLimit= 1.5;
-
-//data logging variables
-unsigned long startingTimeStamp;
-const unsigned long resetInterval = 86400000UL; // 24 hours in milliseconds
 
 // Structure for a task in the queue
 struct Task {
@@ -127,9 +91,75 @@ Task taskQueue[queueSize];
 int queueStart = 0;
 int queueEnd = 0;
 
+// Flow sensor pin and variables
 
-          
+volatile unsigned int flowPulseCount = 0;
+float flowRate = 0.0;
+float waterUsedToday = 0.0; // Liters used today
+float dailyLimit = 1.5; // Daily limit in liters
+float tempDailyLimit= 1.5;
+int flow_limit = 50;
+
+//data logging variables
+unsigned long startingTimeStamp;
+const unsigned long resetInterval = 86400000UL; // 24 hours in milliseconds
+
+ //TFT screen entity
+Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK, TFT_RST);
+
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(moisturePin, INPUT);
+  pinMode(relayPin, OUTPUT);
+  digitalWrite(relayPin, HIGH); // Initially turn off the pump
+  pinMode(ENCODER_SW, INPUT_PULLUP); // Set encoder button as input with internal pull-up
+  pinMode(FLOW_SENSOR_PIN, INPUT);
+  // Initialize TFT 1.77 inch screen
+  tft.initR(INITR_BLACKTAB);    
+  tft.fillScreen(ST7735_BLACK);
+
+  //run intro graphics
+  tft.drawRoundRect(3, 5, 122, 150,5, ST7735_BLUE);
+  tft.setCursor(30, 20);
+  tft.setTextColor(ST7735_GREEN);
+  tft.setTextSize(2);
+  tft.println("SYSTEM");
+  tft.setCursor(30, 45);
+  tft.println("STARTS");
+  tft.setCursor(50, 70);
+  tft.println("IN");
+  tft.drawRect(8 , 125, 112, 25,ST7735_BLUE);
+  tft.fillRect(11, 128, 8, 19, ST7735_RED);
+    for (byte i = 10;count > 0;i--){
+    count = count - 1;
+    startIpDisplay(); 
+    delay(500);   
+  }
+  tft.fillScreen(ST7735_BLACK); // Clear the screen (white background) 
+  Timer1.initialize(1000);
+  Timer1.attachInterrupt(timerIsr); 
   
+  //encoder entity
+  encoder = new ClickEncoder(ENCODER_CLK, ENCODER_DT, ENCODER_SW, 1, false); // (uint8_t A, uint8_t B, uint8_t BTN = -1, uint8_t stepsPerNotch = 1, bool active = LOW);
+  encoder->setAccelerationEnabled(false);
+  //get initial status of encoder
+  last = encoder->getValue(); 
+   
+  // Schedule the first moisture check
+  enqueue(checkMoisture, 0); // Start meassuring soil moisture immediately
+ 
+  //lastTime = millis(); //Trigger the PID contrall
+  startingTimeStamp = millis();
+}
+
+
+void loop() {  
+   dequeue(); // Execute tasks as their time comes
+   drawMenu();
+   readRotaryEncoder();
+   checkMenuAligment();    
+}
 
 //Calculate PID controled for pump runtime by checking if soil moister near setpoint
 float computePID(int input) {
@@ -294,68 +324,6 @@ void startIpDisplay(){
     default:
       break;                                              
   }  
-}
- 
-void setup() {
-  Serial.begin(9600);
-  pinMode(moisturePin, INPUT);
-  pinMode(relayPin, OUTPUT);
-  digitalWrite(relayPin, HIGH); // Initially turn off the pump
-  pinMode(ENCODER_SW, INPUT_PULLUP); // Set encoder button as input with internal pull-up
-  pinMode(FLOW_SENSOR_PIN, INPUT);
-  // Initialize TFT 1.77 inch screen
-  tft.initR(INITR_BLACKTAB);    
-  tft.fillScreen(ST7735_BLACK);
-
-  //run intro graphics
-  tft.drawRoundRect(3, 5, 122, 150,5, ST7735_BLUE);
-  tft.setCursor(30, 20);
-  tft.setTextColor(ST7735_GREEN);
-  tft.setTextSize(2);
-  tft.println("SYSTEM");
-  tft.setCursor(30, 45);
-  tft.println("STARTS");
-  tft.setCursor(50, 70);
-  tft.println("IN");
-  tft.drawRect(8 , 125, 112, 25,ST7735_BLUE);
-  tft.fillRect(11, 128, 8, 19, ST7735_RED);
-    for (byte i = 10;count > 0;i--){
-    count = count - 1;
-    startIpDisplay(); 
-    delay(500);   
-  }
-  tft.fillScreen(ST7735_BLACK); // Clear the screen (white background) 
-  Timer1.initialize(1000);
-  Timer1.attachInterrupt(timerIsr); 
-  
-  //encoder entity
-  encoder = new ClickEncoder(ENCODER_CLK, ENCODER_DT, ENCODER_SW, 1, false); // (uint8_t A, uint8_t B, uint8_t BTN = -1, uint8_t stepsPerNotch = 1, bool active = LOW);
-  encoder->setAccelerationEnabled(false);
-  //get initial status of encoder
-  last = encoder->getValue(); 
-   
-  // Schedule the first moisture check
-  enqueue(checkMoisture, 0); // Start meassuring soil moisture immediately
- 
-  //lastTime = millis(); //Trigger the PID contrall
-  startingTimeStamp = millis();
-}
-
-//24h log refresh
-int dataLoggingForTimeTotal(unsigned long currentTimePump){
-  int reset;
-  if (currentTimePump - startingTimeStamp > resetInterval) {
-    reset = 0;
-    startingTimeStamp = currentTimePump;
-  }
-  return reset;
-}
-
-void loop() {  
-   dequeue(); // Execute tasks as their time comes
-   drawMenu();
-   readRotaryEncoder();
-   checkMenuAligment();    
 }
 
 void checkMenuAligment(){
@@ -803,4 +771,14 @@ void frameFourMenuItemSix(){
       displayMenuItem(menuItem4, 80,false);
       displayMenuItem(menuItem5, 105,false);
       displayMenuItem(menuItem6, 130,true);
+}
+
+//24h log refresh
+int dataLoggingForTimeTotal(unsigned long currentTimePump){
+  int reset;
+  if (currentTimePump - startingTimeStamp > resetInterval) {
+    reset = 0;
+    startingTimeStamp = currentTimePump;
+  }
+  return reset;
 }
