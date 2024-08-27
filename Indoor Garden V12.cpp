@@ -115,28 +115,7 @@ void setup() {
   digitalWrite(relayPin, HIGH); // Initially turn off the pump
   pinMode(ENCODER_SW, INPUT_PULLUP); // Set encoder button as input with internal pull-up
   pinMode(FLOW_SENSOR_PIN, INPUT);
-  // Initialize TFT 1.77 inch screen
-  tft.initR(INITR_BLACKTAB);    
-  tft.fillScreen(ST7735_BLACK);
-
-  //run intro graphics
-  tft.drawRoundRect(3, 5, 122, 150,5, ST7735_BLUE);
-  tft.setCursor(30, 20);
-  tft.setTextColor(ST7735_GREEN);
-  tft.setTextSize(2);
-  tft.println("SYSTEM");
-  tft.setCursor(30, 45);
-  tft.println("STARTS");
-  tft.setCursor(50, 70);
-  tft.println("IN");
-  tft.drawRect(8 , 125, 112, 25,ST7735_BLUE);
-  tft.fillRect(11, 128, 8, 19, ST7735_RED);
-    for (byte i = 10;count > 0;i--){
-    count = count - 1;
-    startIpDisplay(); 
-    delay(500);   
-  }
-  tft.fillScreen(ST7735_BLACK); // Clear the screen (white background) 
+  initializeScreen();
   Timer1.initialize(1000);
   Timer1.attachInterrupt(timerIsr); 
   
@@ -159,6 +138,31 @@ void loop() {
    drawMenu();
    readRotaryEncoder();
    checkMenuAligment();    
+}
+
+void initializeScreen(){
+   // Initialize TFT 1.77 inch screen
+  tft.initR(INITR_BLACKTAB);    
+  tft.fillScreen(ST7735_BLACK);
+
+  //run intro graphics
+  tft.drawRoundRect(3, 5, 122, 150,5, ST7735_BLUE);
+  tft.setCursor(30, 20);
+  tft.setTextColor(ST7735_GREEN);
+  tft.setTextSize(2);
+  tft.println("SYSTEM");
+  tft.setCursor(30, 45);
+  tft.println("STARTS");
+  tft.setCursor(50, 70);
+  tft.println("IN");
+  tft.drawRect(8 , 125, 112, 25,ST7735_BLUE);
+  tft.fillRect(11, 128, 8, 19, ST7735_RED);
+    for (byte i = 10;count > 0;i--){
+    count = count - 1;
+    startIpDisplay(); 
+    delay(500);   
+  }
+  tft.fillScreen(ST7735_BLACK); // Clear the screen (white background) 
 }
 
 //Calculate PID controled for pump runtime by checking if soil moister near setpoint
