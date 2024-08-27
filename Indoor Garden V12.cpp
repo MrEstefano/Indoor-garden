@@ -331,89 +331,23 @@ void startIpDisplay(){
 }
 
 void checkMenuAligment(){
-      if(up){     
-        switch(page){    
-           case 1:
-            up = false;
-            if(menuitem==2 && frame ==2)    {
-               tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
-               frame--;
-            }
-            if(menuitem==4 && frame ==4){
-               tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
-               frame--;
-            }
-            if(menuitem==3 && frame ==3){
-               tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
-               frame--;
-            }
-            lastMenuItem = menuitem;
-            menuitem--;
-            if (menuitem==0){
-               tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
-               menuitem=1;
-            } 
-            tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh 
-         break;
+    if(up){     
+      switch(page){    
+         case 1:
+            checkStatusOfPageOneWhenUp();         
+            break;
          case 2:
-            switch(menuitem){
-               case 1:
-                  up = false;
-                  tft.fillRect(0,130,128,30,ST7735_BLACK);  //refresh
-                  setpoint--;    
-               break;   
-               case 2:
-                  up = false;
-                  tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
-                  flow_limit--;
-               break;
-               case 3:
-                  up = false;
-                  tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
-                  kp--;    
-               break;
-               case 4:
-                  up = false;
-                  tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
-                  ki--;      
-               break;
-               default:
-               break;
-            }
+            checkStatusOfPageTwoWhenUp(); 
             break;
-            default:
+        default:
             break;
-         }
-      } 
-      
-      else if (middle){ //Middle Button is Pressed
+       }
+    }       
+    else if (middle){ //Middle Button is Pressed
           middle = false;
           switch(page){
              case 1:
-                switch(menuitem){
-                   case 5:
-                     if (pumpState){
-                       pumpState = false;
-                       tft.fillRect(0,130,128,105,ST7735_BLACK);  //refresh
-                       menuItem5 = "Pump: OFF";
-                       digitalWrite(relayPin, HIGH); // Turn on the pump, which is active LO
-                     }
-                     else{
-                       pumpState = true; 
-                       tft.fillRect(0,130,128,105,ST7735_BLACK);  //refresh
-                       menuItem5 = "Pump: ON";
-                       digitalWrite(relayPin, LOW); // Turn on the pump, which is active LO
-                     }        
-                     break;
-                   case 6: 
-                      resetDefaults();
-                      break;
-                   case <=4: 
-                      page=2;
-                      break;  
-                   default:
-                      break;
-                }     
+               checkStatusOfPageOneWhenMiddle();                 
                 break;
              case 2:   
                 page=1;
@@ -426,56 +360,13 @@ void checkMenuAligment(){
       else if(down) {  
          switch(page) {
             case 1: //We have turned the Rotary Encoder Clockwise
-                down = false;
-                if(menuitem==3 && lastMenuItem == 2) {
-                     tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
-                     frame ++;
-                }
-                else  if(menuitem==4 && lastMenuItem == 3){
-                     tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
-                     frame ++;
-                }
-                else  if(menuitem==5 && lastMenuItem == 4 && frame!=4){
-                     tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
-                     frame ++;
-                }
-                lastMenuItem = menuitem;
-                menuitem++;  
-                if (menuitem==7) {
-                  tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
-                  menuitem--;
-                }
-              tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
-              
-         break; 
-         case 2:   
-            switch(menuitem){
-               case 1:
-                   down = false;
-                   tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
-                   setpoint++;    
-               break;
-               case 2:
-                   down = false;
-                   tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
-                   flow_limit++;
-               break;
-               case 3:
-                   down = false;
-                   tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
-                   kp++;    
-               break;
-               case 4:
-                   down = false;
-                   tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
-                   ki++;       
-               break;
-               default:
-               break;
-            }
-         break;
-         default:
-         break;
+                checkStatusOfPageOneWhenDown();          
+              break; 
+            case 2:   
+               checkStatusOfPageTwoWhenDown();      
+              break;
+            default:
+              break;
          }
       }   
    }  
@@ -776,6 +667,135 @@ void frameFourMenuItemSix(){
       displayMenuItem(menuItem5, 105,false);
       displayMenuItem(menuItem6, 130,true);
 }
+
+void checkStatusOfPageOneWhenUp(){
+    up = false;
+    if(menuitem==2 && frame ==2)    {
+       tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
+       frame--;
+    }
+    if(menuitem==4 && frame ==4){
+       tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
+       frame--;
+    }
+    if(menuitem==3 && frame ==3){
+       tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
+       frame--;
+    }
+    lastMenuItem = menuitem;
+    menuitem--;
+    if (menuitem==0){
+       tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
+       menuitem=1;
+    } 
+    tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh 
+}
+
+void checkStatusOfPageTwoWhenUp(){
+    switch(menuitem){
+       case 1:
+          up = false;
+          tft.fillRect(0,130,128,30,ST7735_BLACK);  //refresh
+          setpoint--;    
+       break;   
+       case 2:
+          up = false;
+          tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
+          flow_limit--;
+       break;
+       case 3:
+          up = false;
+          tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
+          kp--;    
+       break;
+       case 4:
+          up = false;
+          tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
+          ki--;      
+       break;
+       default:
+       break;
+    }
+}
+
+ void checkStatusOfPageOneWhenMiddle(){
+     switch(menuitem){
+         case 5:
+           if (pumpState){
+             pumpState = false;
+             tft.fillRect(0,130,128,105,ST7735_BLACK);  //refresh
+             menuItem5 = "Pump: OFF";
+             digitalWrite(relayPin, HIGH); // Turn on the pump, which is active LO
+           }
+           else{
+             pumpState = true; 
+             tft.fillRect(0,130,128,105,ST7735_BLACK);  //refresh
+             menuItem5 = "Pump: ON";
+             digitalWrite(relayPin, LOW); // Turn on the pump, which is active LO
+           }        
+           break;
+         case 6: 
+            resetDefaults();
+            break;
+         case <=4: 
+            page=2;
+            break;  
+         default:
+            break;
+      } 
+  }
+
+void checkStatusOfPageOneWhenDown(){
+    down = false;
+      if(menuitem==3 && lastMenuItem == 2) {
+           tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
+           frame ++;
+      }
+      else  if(menuitem==4 && lastMenuItem == 3){
+           tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
+           frame ++;
+      }
+      else  if(menuitem==5 && lastMenuItem == 4 && frame!=4){
+           tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
+           frame ++;
+      }
+      lastMenuItem = menuitem;
+      menuitem++;  
+      if (menuitem==7) {
+        tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
+        menuitem--;
+      }
+    tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
+    }
+
+void  checkStatusOfPageTwoWhenDown(){
+     switch(menuitem){
+         case 1:
+             down = false;
+             tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
+             setpoint++;    
+         break;
+         case 2:
+             down = false;
+             tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
+             flow_limit++;
+         break;
+         case 3:
+             down = false;
+             tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
+             kp++;    
+         break;
+         case 4:
+             down = false;
+             tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
+             ki++;       
+         break;
+         default:
+         break;
+      }
+  }
+            
+
 
 //24h log refresh
 int dataLoggingForTimeTotal(unsigned long currentTimePump){
