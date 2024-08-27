@@ -329,10 +329,11 @@ void setup() {
   Timer1.attachInterrupt(timerIsr); 
   
   //encoder entity
-  encoder = new ClickEncoder(3, 4, 5);
+  encoder = new ClickEncoder(ENCODER_CLK, ENCODER_DT, ENCODER_SW, 1, false); // (uint8_t A, uint8_t B, uint8_t BTN = -1, uint8_t stepsPerNotch = 1, bool active = LOW);
   encoder->setAccelerationEnabled(false);
-
-  last = encoder->getValue();
+  //get initial status of encoder
+  last = encoder->getValue(); 
+   
   // Schedule the first moisture check
   enqueue(checkMoisture, 0); // Start meassuring soil moisture immediately
  
@@ -351,169 +352,163 @@ int dataLoggingForTimeTotal(unsigned long currentTimePump){
 }
 
 void loop() {  
-  dequeue(); // Execute tasks as their time comes
-  drawMenu();
-  readRotaryEncoder();
-
-
-   ClickEncoder::Button b = encoder->getButton();
-   if (b != ClickEncoder::Open) {
-   switch (b) {
-      case ClickEncoder::Clicked:
-         middle=true;
-         tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
-        break;
-    }
-  }    
-  
-  if (up && page == 1 ) {     
-      up = false;
-      if(menuitem==2 && frame ==2)    {
-         tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
-         frame--;
-      }
-      if(menuitem==4 && frame ==4){
-         tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
-         frame--;
-      }
-      if(menuitem==3 && frame ==3){
-         tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
-         frame--;
-      }
-      lastMenuItem = menuitem;
-      menuitem--;
-      if (menuitem==0){
-         tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
-         menuitem=1;
-      } 
-      tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh 
-   }
-   else if (up && page == 2 && menuitem==1 ) {
-       up = false;
-       tft.fillRect(0,130,128,30,ST7735_BLACK);  //refresh
-       setpoint--;    
-  }
-  else if (up && page == 2 && menuitem==2 ) {
-       up = false;
-       tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
-       flow_limit--;
-  }
-  else if (up && page == 2 && menuitem==3 ) {
-       up = false;
-       tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
-       kp--;    
-  }
-  else if (up && page == 2 && menuitem==4 ) {
-       up = false;
-       tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
-       ki--;      
-  }
-
-  if (down && page == 1){ //We have turned the Rotary Encoder Clockwise
-       down = false;
-       if(menuitem==3 && lastMenuItem == 2) {
-            tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
-            frame ++;
-       }
-       else  if(menuitem==4 && lastMenuItem == 3){
-            tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
-            frame ++;
-       }
-       else  if(menuitem==5 && lastMenuItem == 4 && frame!=4){
-            tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
-            frame ++;
-       }
-       lastMenuItem = menuitem;
-       menuitem++;  
-    if (menuitem==7) 
-    {
-      tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
-      menuitem--;
-    }
-  tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
-  }else if (down && page == 2 && menuitem==1) {
-    down = false;
-    tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
-    setpoint++;
-    
-  }
-  else if (down && page == 2 && menuitem==2) {
-    down = false;
-    tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
-    flow_limit++;
-  }
-   else if (down && page == 2 && menuitem==3 ) {
-    down = false;
-    tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
-    kp++;
-    
-  }
-  else if (down && page == 2 && menuitem==4 ) {
-    down = false;
-    tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
-    ki++;
-    
-  }
-  
-  if (middle) //Middle Button is Pressed
-  {
-    middle = false;
-   
-    if (page == 1 && menuitem==5) // Backlight Control 
-    {
-      if (pumpState) 
-      {
-        pumpState = false;
-        tft.fillRect(0,130,128,105,ST7735_BLACK);  //refresh
-        menuItem5 = "Pump: OFF";
-        digitalWrite(relayPin, HIGH); // Turn on the pump, which is active LO
-        }
-      else 
-      {
-        pumpState = true; 
-        tft.fillRect(0,130,128,105,ST7735_BLACK);  //refresh
-        menuItem5 = "Pump: ON";
-        digitalWrite(relayPin, LOW); // Turn on the pump, which is active LO
-       }
-    }
-
-    if(page == 1 && menuitem ==6)// Reset
-    {
-      resetDefaults();
-    }
-
-
-    else if (page == 1 && menuitem<=4) {
-      page=2;
-     }
-      else if (page == 2) 
-     {
-      page=1; 
-     }
-   }   
+   dequeue(); // Execute tasks as their time comes
+   drawMenu();
+   readRotaryEncoder();
+   checkMenuAligment();    
 }
 
+void checkMenuAligment(){
+      if(up){     
+        switch(page){    
+           case 1:
+            up = false;
+            if(menuitem==2 && frame ==2)    {
+               tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
+               frame--;
+            }
+            if(menuitem==4 && frame ==4){
+               tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
+               frame--;
+            }
+            if(menuitem==3 && frame ==3){
+               tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
+               frame--;
+            }
+            lastMenuItem = menuitem;
+            menuitem--;
+            if (menuitem==0){
+               tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
+               menuitem=1;
+            } 
+            tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh 
+         break;
+         case 2:
+            switch(menuitem){
+               case 1:
+                  up = false;
+                  tft.fillRect(0,130,128,30,ST7735_BLACK);  //refresh
+                  setpoint--;    
+               break;   
+               case 2:
+                  up = false;
+                  tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
+                  flow_limit--;
+               break;
+               case 3:
+                  up = false;
+                  tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
+                  kp--;    
+               break;
+               case 4:
+                  up = false;
+                  tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
+                  ki--;      
+               break;
+               default:
+               break;
+            }
+            break;
+            default:
+            break;
+         }
+      } 
+      
+      else if (middle){ //Middle Button is Pressed
+          middle = false;
+          switch(page){
+             case 1:
+                switch(menuitem){
+                   case 5:
+                     if (pumpState){
+                       pumpState = false;
+                       tft.fillRect(0,130,128,105,ST7735_BLACK);  //refresh
+                       menuItem5 = "Pump: OFF";
+                       digitalWrite(relayPin, HIGH); // Turn on the pump, which is active LO
+                     }
+                     else{
+                       pumpState = true; 
+                       tft.fillRect(0,130,128,105,ST7735_BLACK);  //refresh
+                       menuItem5 = "Pump: ON";
+                       digitalWrite(relayPin, LOW); // Turn on the pump, which is active LO
+                     }        
+                     break;
+                   case 6: 
+                      resetDefaults();
+                      break;
+                   case <=4: 
+                      page=2;
+                      break;  
+                   default:
+                      break;
+                }     
+                break;
+             case 2:   
+                page=1;
+                break;
+             default:
+                break;
+             }      
+         }   
+         
+      else if(down) {  
+         switch(page) {
+            case 1: //We have turned the Rotary Encoder Clockwise
+                down = false;
+                if(menuitem==3 && lastMenuItem == 2) {
+                     tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
+                     frame ++;
+                }
+                else  if(menuitem==4 && lastMenuItem == 3){
+                     tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
+                     frame ++;
+                }
+                else  if(menuitem==5 && lastMenuItem == 4 && frame!=4){
+                     tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
+                     frame ++;
+                }
+                lastMenuItem = menuitem;
+                menuitem++;  
+                if (menuitem==7) {
+                  tft.fillRect(0,80,128,105,ST7735_BLACK);  //refresh
+                  menuitem--;
+                }
+              tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
+              
+         break; 
+         case 2:   
+            switch(menuitem){
+               case 1:
+                   down = false;
+                   tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
+                   setpoint++;    
+               break;
+               case 2:
+                   down = false;
+                   tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
+                   flow_limit++;
+               break;
+               case 3:
+                   down = false;
+                   tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
+                   kp++;    
+               break;
+               case 4:
+                   down = false;
+                   tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
+                   ki++;       
+               break;
+               default:
+               break;
+            }
+         break;
+         default:
+         break;
+         }
+      }   
+   }  
+
 void drawMenu() {
-  if (isCountingDown) {    
-    unsigned long currentTime = millis();
-    unsigned long timeRemaining = (taskQueue[queueStart].executeTime > currentTime) ?
-                                  (taskQueue[queueStart].executeTime - currentTime) : 0;
-    char buff[6]; // 3 characters + NUL
-    sprintf(buff, "%3d", timeRemaining / 1000);       // Right-justified long converted to seconds
-
-   
-
-    //1st line
-    tft.setTextSize(2);
-    tft.setCursor(5, 5);
-    tft.println("SOIL:");
-    tft.setCursor(65, 5);
-    tft.println(lastMoistureValue);
-    tft.setCursor(105, 5);
-    tft.println("%");
-
-   
-    //3nd line
     if (taskQueue[queueStart].function == checkMoisture) {
       tft.fillRect(70,30,40,25,ST7735_BLACK);  //refresh countdown field  
       tft.setCursor(5, 30);
@@ -529,187 +524,71 @@ void drawMenu() {
       tft.setCursor(5, 55);
       tft.println("Flow check");
     }
-    */
-     
-    
-    tft.setCursor(70, 30);
-    //tft.setTextWrap(false);
-    tft.print(buff); // Display countdown in seconds right side justified
-    //tft.setCursor(105, 30);
-    //tft.setTextWrap(true);
-    tft.print("s");
-    }   
-  if (page==1) {    
-    
+    */   
+  if (isCountingDown) {    
+    unsigned long currentTime = millis();
+    unsigned long timeRemaining = (taskQueue[queueStart].executeTime > currentTime) ?
+                                  (taskQueue[queueStart].executeTime - currentTime) : 0;
+    char buff[6]; // 3 characters + NUL
+    sprintf(buff, "%3d", timeRemaining / 1000);       // Right-justified long converted to seconds   
+
+    //1st line
     tft.setTextSize(2);
-    //tft.fillScreen(ST7735_BLACK);
-    tft.setTextColor(ST7735_GREEN, ST7735_BLACK);
-    tft.setCursor(3, 55);
-    tft.print("MAIN MENU");
-    tft.fillRect(0,72,128,2,ST7735_GREEN);  //draw a line
-    //tft.drawFastHLine(0,78,128,ST7735_GREEN);
-
-    if(menuitem==1 && frame ==1)
-    { 
-      //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh  
-      displayMenuItem(menuItem1, 80,true);
-      displayMenuItem(menuItem2, 105,false);
-      displayMenuItem(menuItem3, 130,false);
-    }
-    else if(menuitem == 2 && frame == 1)
-    {
-      //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
-      displayMenuItem(menuItem1, 80,false);
-      displayMenuItem(menuItem2, 105,true);
-      displayMenuItem(menuItem3, 130,false);
-    }
-    else if(menuitem == 3 && frame == 1)
-    {
-      //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
-      displayMenuItem(menuItem1, 80,false);
-      displayMenuItem(menuItem2, 105,false);
-      displayMenuItem(menuItem3, 130,true);
-    }
-     else if(menuitem == 4 && frame == 2)
-    {
-      //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
-      displayMenuItem(menuItem2, 80,false);
-      displayMenuItem(menuItem3, 105,false);
-      displayMenuItem(menuItem4, 130,true);
-    }
-
-      else if(menuitem == 3 && frame == 2)
-    {
-      //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
-      displayMenuItem(menuItem2, 80,false);
-      displayMenuItem(menuItem3, 105,true);
-      displayMenuItem(menuItem4, 130,false);
-    }
-    else if(menuitem == 2 && frame == 2)
-    {
-      //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
-      displayMenuItem(menuItem2, 80,true);
-      displayMenuItem(menuItem3, 105,false);
-      displayMenuItem(menuItem4, 130,false);
-    }
-    
-    else if(menuitem == 5 && frame == 3)
-    {
-      //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
-      displayMenuItem(menuItem3, 80,false);
-      displayMenuItem(menuItem4, 105,false);
-      displayMenuItem(menuItem5, 130,true);
-    }
-
-    else if(menuitem == 6 && frame == 4)
-    {
-      //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
-      displayMenuItem(menuItem4, 80,false);
-      displayMenuItem(menuItem5, 105,false);
-      displayMenuItem(menuItem6, 130,true);
-    }
-    
-      else if(menuitem == 5 && frame == 4)
-    {
-      //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
-      displayMenuItem(menuItem4, 80,false);
-      displayMenuItem(menuItem5, 105,true);
-      displayMenuItem(menuItem6, 130,false);
-    }
-      else if(menuitem == 4 && frame == 4)
-    {
-      //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
-      displayMenuItem(menuItem4, 80,true);
-      displayMenuItem(menuItem5, 105,false);
-      displayMenuItem(menuItem6, 130,false);
-    }
-    else if(menuitem == 3 && frame == 3)
-    {
-      //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
-      displayMenuItem(menuItem3, 80,true);
-      displayMenuItem(menuItem4, 105,false);
-      displayMenuItem(menuItem5, 130,false);
-    }
-        else if(menuitem == 2 && frame == 2)
-    {
-      //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
-      displayMenuItem(menuItem2, 80,true);
-      displayMenuItem(menuItem3, 105,false);
-      displayMenuItem(menuItem4, 130,false);
-    }
-    else if(menuitem == 4 && frame == 3)
-    {
-      //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
-      displayMenuItem(menuItem3, 80,false);
-      displayMenuItem(menuItem4, 105,true);
-      displayMenuItem(menuItem5, 130,false);
-    }   
-    
-  }
-  else if (page==2 && menuitem == 1)   {   
-   tft.fillRect(0,55,128,105,ST7735_BLACK);  //refresh  
-   displayIntMenuPage(menuItem1, setpoint);
-  }
-
-  else if (page==2 && menuitem == 2)   {
-   tft.fillRect(0,55,128,105,ST7735_BLACK);  //refresh 
-   displayIntMenuPage(menuItem2, flow_limit);
-  }
-  else if (page==2 && menuitem == 3)   {
-   tft.fillRect(0,55,128,105,ST7735_BLACK);  //refresh 
-   displayIntMenuPage(menuItem3, kp);
-  }
-  else if (page==2 && menuitem == 4)  {
-   tft.fillRect(0,55,128,105,ST7735_BLACK);  //refresh 
-   displayIntMenuPage(menuItem4, ki);
-  }
-  else if (page==2 && menuitem == 5)   {
-   tft.fillRect(0,55,128,105,ST7735_BLACK);  //refresh 
-   displayIntMenuPage(menuItem4, (int)pumpState);
-  }
+    tft.setCursor(5, 5);
+    tft.println("SOIL:");
+    tft.setCursor(65, 5);
+    tft.println(lastMoistureValue);
+    tft.setCursor(105, 5);
+    tft.println("%");
+     
+     //Second line
+    tft.setCursor(70, 30);
+    tft.print(buff); // Display countdown in seconds right side justified
+    tft.print("s");
+ }   
+ switch(page){
+      case 1: 
+          drawPageOne();    
+          break;
+      case 2:   
+          drawPageTwo();  
+        break;
+      default:
+        break;
+   }    
 }
   
-  void resetDefaults()  {
+void resetDefaults(){
     setpoint = 70;
     flow_limit = 50;
     kp = 2;
     ki = 0.1;    
     pumpState = true;
-    menuItem5 = "Pump: OFF";
-    
-  }
-
-  void timerIsr() {
-  encoder->service();
+    menuItem5 = "Pump: OFF";    
 }
 
-void displayIntMenuPage(String menuItem, int value)
-{
-    tft.setTextSize(2);  
-    tft.setTextColor(ST7735_GREEN, ST7735_BLACK);
-    tft.setCursor(15, 55);
-    tft.print(menuItem);
-    tft.fillRect(0,72,128,2,ST7735_GREEN);  //draw a line
-    //tft.drawFastHLine(0,60,128,ST7735_GREEN);
+void timerIsr() {
+   encoder->service();
+}
+
+void displayIntMenuPage(String menuItem, int value){    
+    tft.fillRect(0,110,128,50,ST7735_BLACK);  //refresh
     tft.setCursor(5, 80);
     tft.print("Value");
     tft.setTextSize(3);
     tft.setCursor(5, 110);
     tft.print(value);
-    tft.setTextSize(2);
-    tft.fillRect(0,130,128,30,ST7735_BLACK);  //refresh
+    tft.setTextSize(2);    
 }
 
 
-void displayMenuItem(String item, int position, boolean selected)
-{
-    if(selected)
-    {
+void displayMenuItem(String item, int position, boolean selected){
+    if(selected) {
       tft.setTextColor(ST7735_BLACK, ST7735_GREEN);  
       tft.setCursor(0, position);
       tft.print(">"+item);
-    }else
-    {
+    }
+    else {
       tft.setTextColor(ST7735_GREEN, ST7735_BLACK);
       tft.setCursor(0, position);
       tft.print(" "+item);
@@ -718,16 +597,210 @@ void displayMenuItem(String item, int position, boolean selected)
 }
 
 void readRotaryEncoder(){
-  value += encoder->getValue();
-  
-  if (value/2 > last) {
-    last = value/2;
-    down = true;
-    delay(150);
-  }else   if (value/2 < last) {
-    last = value/2;
-    up = true;
-    delay(150);
-  }
+   ClickEncoder::Button b = encoder->getButton();
+   if (b != ClickEncoder::Open) {
+      switch (b) {
+         case ClickEncoder::Clicked:
+            middle=true;
+            tft.fillRect(0,110,128,30,ST7735_BLACK);  //refresh
+         break;
+       }
+   }   
+   value += encoder->getValue();  
+   if (value/2 > last) {
+       last = value/2;
+       down = true;
+       delay(150);
+   }
+   else if (value/2 < last) {
+       last = value/2;
+       up = true;
+       delay(150);
+   }
 }
 
+void drawPageOne(){
+    tft.setTextSize(2);
+    //tft.fillScreen(ST7735_BLACK);
+    tft.setTextColor(ST7735_GREEN, ST7735_BLACK);
+    tft.setCursor(3, 55);
+    tft.print("MAIN MENU");
+    tft.fillRect(0,72,128,2,ST7735_GREEN);  //draw a line
+    //tft.drawFastHLine(0,78,128,ST7735_GREEN);
+    switch(frame){
+       case 1:
+          switch(menuitem){
+             case 1:
+                frameOneMenuItemOne();
+                break;
+             case 2:
+                frameOneMenuItemTwo();
+                break;
+             case 3:
+                frameOneMenuItemThree();
+                break;
+             default:
+                break;
+          }     
+          break;
+       case 2:
+          switch(menuitem){
+             case 2:
+                frameTwoMenuItemTwo();
+                break;
+             case 3:
+                frameTwoMenuItemThree()
+                break;
+             case 4:
+                frameTwoMenuItemFour()
+                break;
+             default:
+                break;
+          }     
+         break;
+       case 3:
+          switch(menuitem){
+             case 3:
+                frameThreeMenuItemThree();
+                break;
+             case 4:
+                frameThreeMenuItemFour();
+                break;
+             case 5:
+                frameThreeMenuItemFive();
+                break;
+             default:
+                break;
+          }   
+       break;
+       case 4:
+          switch(menuitem){
+             case 3:
+                frameFourMenuItemFour();
+                break;
+             case 4:
+                frameFourMenuItemFive();
+                break;
+             case 5:
+                frameFourMenuItemSix();
+                break;
+             default:
+                break;
+          }                
+       break;        
+       default:
+       break;
+    }   
+} 
+
+void drawPageTwo(){        
+  tft.setTextSize(2);  
+  tft.setTextColor(ST7735_GREEN, ST7735_BLACK);
+  tft.setCursor(15, 55);
+  tft.fillRect(0,55,128,105,ST7735_BLACK);  //refresh  
+  tft.print(menuItem);
+  tft.fillRect(0,72,128,2,ST7735_GREEN);  //draw a line
+  switch(menuitem){
+          case 1:
+               displayIntMenuPage(menuItem1, setpoint);
+             break;
+          case 2:
+               displayIntMenuPage(menuItem2, flow_limit);
+             break;
+          case 3:
+                displayIntMenuPage(menuItem3, kp);
+             break;
+          case 4:
+                displayIntMenuPage(menuItem4, ki);
+             break;
+          case 5:
+                displayIntMenuPage(menuItem4, (int)pumpState);
+             break;
+          default:
+             break;
+       }    
+}   
+
+void frameOneMenuItemOne(){
+      //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh  
+      displayMenuItem(menuItem1, 80,true);
+      displayMenuItem(menuItem2, 105,false);
+      displayMenuItem(menuItem3, 130,false);
+}
+
+void frameOneMenuItemTwo(){
+   //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
+   displayMenuItem(menuItem1, 80,false);
+   displayMenuItem(menuItem2, 105,true);
+   displayMenuItem(menuItem3, 130,false);
+}
+
+void frameOneMenuItemThree(){
+   //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
+   displayMenuItem(menuItem1, 80,false);
+   displayMenuItem(menuItem2, 105,false);
+   displayMenuItem(menuItem3, 130,true);
+}
+
+void frameTwoMenuItemTwo(){
+   //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
+   displayMenuItem(menuItem2, 80,true);
+   displayMenuItem(menuItem3, 105,false);
+   displayMenuItem(menuItem4, 130,false);
+}
+
+void frameTwoMenuItemThree(){
+   //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
+   displayMenuItem(menuItem2, 80,false);
+   displayMenuItem(menuItem3, 105,true);
+   displayMenuItem(menuItem4, 130,false);
+} 
+
+void frameTwoMenuItemFour(){
+   //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
+   displayMenuItem(menuItem2, 80,false);
+   displayMenuItem(menuItem3, 105,false);
+   displayMenuItem(menuItem4, 130,true);
+}
+
+void frameThreeMenuItemThree(){
+    //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
+   displayMenuItem(menuItem3, 80,true);
+   displayMenuItem(menuItem4, 105,false);
+   displayMenuItem(menuItem5, 130,false);
+}
+
+void frameThreeMenuItemFour(){
+   //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
+   displayMenuItem(menuItem3, 80,false);
+   displayMenuItem(menuItem4, 105,true);
+   displayMenuItem(menuItem5, 130,false);
+} 
+
+void frameThreeMenuItemFive(){
+   //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
+   displayMenuItem(menuItem3, 80,false);
+   displayMenuItem(menuItem4, 105,false);
+   displayMenuItem(menuItem5, 130,true);
+}
+
+void frameFourMenuItemFour(){
+      //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
+      displayMenuItem(menuItem4, 80,true);
+      displayMenuItem(menuItem5, 105,false);
+      displayMenuItem(menuItem6, 130,false);
+}
+
+void frameFourMenuItemFive(){
+      //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
+      displayMenuItem(menuItem4, 80,false);
+      displayMenuItem(menuItem5, 105,true);
+      displayMenuItem(menuItem6, 130,false);
+}
+
+void frameFourMenuItemSix(){
+      //tft.fillRect(0,80,128,80,ST7735_BLACK);  //refresh
+      displayMenuItem(menuItem4, 80,false);
+      displayMenuItem(menuItem5, 105,false);
+      displayMenuItem(menuItem6, 130,true);
+}
