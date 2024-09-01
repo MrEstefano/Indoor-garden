@@ -123,7 +123,8 @@ bool mutex_flag = false;
 void flowSensorISR();
 float computePID(int input);
 void drawMenu(); 
-void navigateInMenu();
+void navigateInMenuDown();
+void navigateInMenuUp();
 void drawSubMenu();
 void drawMainMenu();
 void displayMenuItem();    
@@ -162,7 +163,7 @@ void setup() {
 
   ScreenStartUpSequance(); //screen grafic startup
 
-  Timer1.initialize(5000);   //Rotary Encoder is triggered by Timer 1 overflow period
+  Timer1.initialize(1000);   //Rotary Encoder is triggered by Timer 1 overflow period
   Timer1.attachInterrupt(timerIsr); 
   
   //encoder entity
@@ -174,7 +175,7 @@ void setup() {
 
   // Schedule the first moisture check
   enqueue(checkMoisture, 0); // Start meassuring soil moisture immediately
-  navigateInMenu(); // Start navigating through menu immediately 
+  //navigateInMenu(); // Start navigating through menu immediately 
   menuitem = SETPOINT; //initialize
   //lastTime = millis(); //Trigger the PID contrall
   startingTimeStamp = millis();
@@ -217,16 +218,17 @@ void timerIsr() {
   value += encoder->getValue();  
   if (value/2 > last) {
     last = value/2;
-    down = true;  
-    navigateInMenu(); // Start navigating through menu once timer count overflows(free the main loop)
-    delay(15);
-  }else   if (value/2 < last) {
-    last = value/2;
-    up = true;       
-    navigateInMenu(); // Start navigating through menu once timer count overflows(free the main loop)
+    down = true;      
+    navigateInMenuDown(); // Start navigating through menu once timer count overflows(free the main loop)
     delay(15);
   }
-  
+  else   if (value/2 < last) {
+    last = value/2;
+    up = true;         
+    navigateInMenuUP(); // Start navigating through menu once timer count overflows(free the main loop)
+    delay(15);
+  }
+ 
 }
 
 void drawMenu() {
@@ -270,21 +272,21 @@ void drawMenu() {
     }
 }
 
-void navigateInMenu(){
-  
+void navigateInMenuUP(){
   if(page == MAIN_MENU){     
-    if (up) {     
-      up = false;
-      frameAligmentUP();
-    }
-    if (down ) {//We have turned the Rotary Encoder Clockwise
-      frameAligmentDown();
-      down = false;
-    }
+    frameAligmentUP();  
   }
-  if(page == SUB_MENU){    
-    valueAdjustment();
+  else if(page == SUB_MENU){    
+        valueAdjustment();
   }  
+}  
+void navigateInMenuDown(){
+  if(page == MAIN_MENU){     
+      frameAligmentDown();    
+  }      
+  else if(page == SUB_MENU){    
+    valueAdjustment();
+  }   
 }
 
 void pressButtonAction(){
@@ -318,7 +320,6 @@ void pressButtonAction(){
     else if(page == SUB_MENU){
       
       page = MAIN_MENU; 
-      menuitem = SETPOINT; //initialize
       oldPage = SUB_MENU;
     }   
   middle = false;     
@@ -486,7 +487,7 @@ void drawRefreshSubMenu(){
     if (page != oldPage) {
     tft.fillRect(0,55,128,105,ST7735_BLACK);  //refresh half of the screen when entering menu page first time
     drawSubMenu();
-    oldPage = SUB_MENU;     
+     oldPage = SUB_MENU;    
   }
   else{
     drawSubMenu();
@@ -517,7 +518,7 @@ void drawRefreshMainMenu(){
    if (page != oldPage) {
       tft.fillRect(0,55,128,105,ST7735_BLACK);  //refresh half of the screen when entering menu page first time
       drawMainMenu(); 
-      oldPage = MAIN_MENU;  
+       oldPage = MAIN_MENU;  
     }
     else{
       drawMainMenu(); 
@@ -526,12 +527,23 @@ void drawRefreshMainMenu(){
 }
 
 void drawMainMenu(){    
+  const int positions[] = {80, 105, 130};  // Array for Y positions of menu items
+  const int numItems = 3;  // Number of menu items
   tft.setTextSize(2);  
   tft.setTextColor(ST7735_GREEN, ST7735_BLACK);
   tft.setCursor(3, 55);
   tft.print("MAIN MENU");
   tft.fillRect(0,72,128,2,ST7735_GREEN);  //draw a line   
-  switch(frame){
+   /*int base = frame -1;
+  for (int i = 0 + base; i < numItems + base; i++) {
+        bool isSelected = menuitem == i-base ? true : false;
+   //    bool isSelected = (menuitem == i - base);  // Check if the current menu item is selected
+        displayMenuItem(menuItems[i], positions[i - base], isSelected);
+        delay(15);
+      }
+} 
+     /**/ 
+   switch(frame){
     case 1:
       refreshFrameOne();      
       break;  
@@ -544,9 +556,56 @@ void drawMainMenu(){
     case 4:
       refreshFrameFour();     
       break;
-  }      
-} 
+  }  
+}
+  
+      
+   
+ /*    
+  switch(frame){
+    case 1:
+      
 
+      for (int i = 0; i < numItems ; i++) {
+        bool isSelected = (menuitem == i) ? true : false;
+       // bool isSelected = (menuitem == i);  // Check if the current menu item is selected
+        displayMenuItem(menuItems[i], positions[i ], isSelected);
+        delay(5);
+      }
+      //refreshFrameOne();      
+      break;  
+    case 2:
+        for (int i = 0 + 1; i < numItems + 1; i++) {
+          bool isSelected = (menuitem == i- 1) ? true : false;
+        //bool isSelected = (menuitem == i- 1);  // Check if the current menu item is selected
+        displayMenuItem(menuItems[i], positions[i - 1], isSelected);
+        delay(5);
+      }
+      //refreshFrameTwo();
+      break;    
+    case 3:
+      for (int i = 0 + 2; i < numItems + 2; i++) {
+        bool isSelected = (menuitem == i- 2) ? true : false;
+        //menuitem == i- 1
+        //bool isSelected = (menuitem == i-2);  // Check if the current menu item is selected
+        displayMenuItem(menuItems[i], positions[i - 2], isSelected);
+        delay(5);
+      }
+      //refreshFrameThree();
+      break;   
+    case 4:
+      for (int i = 0 + 3; i < numItems + 3; i++) {
+        bool isSelected = (menuitem == i- 3) ? true : false;
+        //bool isSelected = (menuitem == i-3);  // Check if the current menu item is selected
+        displayMenuItem(menuItems[i], positions[i - 3], isSelected);
+        delay(5);
+      }
+      //refreshFrameFour();     
+      break;
+  }      
+ 
+} 
+*/
 void refreshFrameOne(){
   if(menuitem == SETPOINT ){          
     displayMenuItem(menuItems[SETPOINT], 80,true);
@@ -637,7 +696,8 @@ void displayIntMenuPage(String menuItem, float value){
   else{      
     tft.print(value);
   }        
-  tft.setTextSize(2);     
+  tft.setTextSize(2);   
+  
 }
 
 
@@ -672,6 +732,7 @@ void frameAligmentUP(){
   if (menuitem==TOTAL_ITEMS){      
     menuitem--;
   }
+  up = false;
   //-------------------  
 }
 
@@ -690,11 +751,12 @@ void frameAligmentDown(){
   if (menuitem==0){
     menuitem = SETPOINT;
   } 
+  down =false;
 }
 
 void valueAdjustment(){
   if(up){
-  up=false;
+  
     if (menuitem == SETPOINT ) {
       setpoint++;
     }
@@ -707,10 +769,11 @@ void valueAdjustment(){
       else if ( menuitem == INTEGRA  ) {
       ki=ki+0.1;      
     }
+    up=false;
   } 
 
   if(down){
-    down = false;
+    
     if (menuitem == SETPOINT) {
       setpoint--;
     }
@@ -723,6 +786,7 @@ void valueAdjustment(){
     else if ( menuitem == INTEGRA ) {
       ki=ki-0.1;    
     }
+    down = false;
   }  
 }
 
