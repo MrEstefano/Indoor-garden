@@ -1,7 +1,7 @@
 /**************************************************************************************/
-/*  Name    : Indoor Garden V16                                                       */
+/*  Name    : Indoor Garden V21                                                       */
 /*  Author  : Stefan Zakutansky ATU.ie student                                        */
-/*  Date    : 29. 8.2023                                                              */
+/*  Date    : 1. 9.2023                                                              */
 /*  Notes   : The code operates on Queuing architecture to faciliate a "mutex" for    */
 /*            global variables. The system measures a soil moisture by capacitive    	*/
 /*            sensor. The values are computed by PID alghoritm to calculate           */
@@ -21,8 +21,6 @@
 #include <SPI.h>
 #include <ClickEncoder.h>
 #include <TimerOne.h>
-//#include <Scheduler.h>
-//#include <Scheduler/Semaphore.h>
 
 #define DEBUG 0
 // Pin definitions for the 1.77-inch TFT (ST7735)
