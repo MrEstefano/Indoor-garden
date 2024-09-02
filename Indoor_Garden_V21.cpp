@@ -64,7 +64,7 @@ enum Page {
 Page page = MAIN_MENU;   
 Page oldPage = SUB_MENU;
 Menu_item menuitem = SETPOINT; 
-Menu_item lastMenuItem = SETPOINT;
+Menu_item lastMenuItem;
 
 String menuItems[TOTAL_ITEMS] = {"SETPOINT ",
                                  "FLOW LIM ",
@@ -90,13 +90,12 @@ byte count =10;
 volatile bool pumpState = false;
 volatile bool navigateDownFlag = false;
 volatile bool navigateUpFlag = false;
-unsigned long moistureCheckInterval = 120000; // Interval to check moisture 2 minute)
-unsigned long pumpRunTime = 0; // How long to run the pump (60 seconds)
-volatile unsigned int pumpRunTimePerDay =0;
-unsigned long countdownTime = 0; // Holds the countdown time for display
 volatile bool isCountingDown = true; // Indicates if a countdown is active
-int lastMoistureValue = 0; // Stores the last measured soil moisture value
-volatile unsigned long lastFlowPulseTime = 0;
+unsigned long countdownTime = 0; // Holds the countdown time for display
+unsigned long moistureCheckInterval = 120000; // Interval to check moisture 2 minute)
+unsigned float pumpRunTime = 0; // How long to run the pump (60 seconds)
+unsigned int lastMoistureValue = 0; // Stores the last measured soil moisture value
+volatile unsigned float pumpRunTimePerDay = 0;
 
 //PID variables - kp,ki,kd were calibrated 
 int setpoint = 70;  // Desired soil moisture level
@@ -111,9 +110,8 @@ unsigned long lastTime = 0;
 // Flow sensor pin and variables
 const float calibrationFactor = 16.6;//9 at .11 flow  // This factor may vary depending on the sensor
 volatile unsigned int flowPulseCount = 0;
-//float flowRate = 0.0;
 volatile float waterUsedToday = 0.0; // Liters used today
-float flow_limit = 1.0;
+float waterSupplyLimit = 1.0; // 1 liter
 
 //data logging variables
 unsigned long startingTimeStamp = 0;
@@ -137,7 +135,6 @@ int queueEnd = 0;
 // DECLARATION OF SUB-FUNCTIONS
 //------------------------------------------------------------------------------
 //Declaring Sub-Functions
-void flowSensorISR();
 float computePID(int input);
 void drawMenu(); 
 void navigateInMenuDown();
@@ -153,17 +150,13 @@ void calculateWaterFlow();
 void startIpDisplay();
 void ScreenStartUpSequance();
 void resetDefaults();
-void refreshFrameOne();
-void refreshFrameTwo();
-void refreshFrameThree();
-void refreshFrameFour();
 void drawRefreshMainMenu();
 void drawRefreshSubMenu();
 void frameAligmentUP();
 void frameAligmentDown();
 void valueAdjustment();
 void pressButtonAction();
-void displayIntMenuPage(String menuItem, float value);
+void displayItemMenuPage(String menuItem, float value);
 void displayMenuItem(String item, int position, boolean selected);
 void mainMenuAction(); 
 void updateSoilMoistureDisplay();
@@ -186,8 +179,11 @@ void setup() {
   // Initialize TFT 1.77 inch screen
   tft.initR(INITR_BLACKTAB);    
   tft.fillScreen(ST7735_BLACK);
+  
+#ifndef DEBUG
   ScreenStartUpSequance(); //screen grafic startup
-
+#endif
+  
   Timer1.initialize(1000);   //Rotary Encoder is triggered by Timer 1 overflow period
   Timer1.attachInterrupt(timerIsr); 
   
@@ -197,7 +193,6 @@ void setup() {
   last = encoder->getValue();
 
   attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowSensorISR, RISING);  //Enable ISR
-
 
   // Schedule the first moisture check
   enqueue(checkMoisture, 0); // Start meassuring soil moisture immediatel
@@ -229,7 +224,7 @@ void loop() {
 
 void resetDefaults(){
   setpoint = 70;
-  flow_limit = 50;
+  waterSupplyLimit = 1.0;
   kp = 1.97;      // Proportional gain - original = 2;
   ki = 0.80;      // Integral gain - original 0.1;
   pumpState = true;
@@ -267,7 +262,7 @@ void drawMenu() {
   char buff[6]; // 3 characters + NUL
   sprintf(buff, "%3d", timeRemaining / 1000);       // Right-justified long converted to seconds
     
-  if (isCountingDown) {   
+  if (isCountingDown) {   //check if new data has been processed 
     //1st line
     tft.setTextColor(ST7735_GREEN, ST7735_BLACK);
     tft.setTextSize(2);
@@ -304,7 +299,7 @@ void drawMenu() {
 void navigateInMenuUp(){  
   if(page == MAIN_MENU){       
     if(menuitem > SETPOINT){
-      menuitem = static_cast<int>(menuitem) - 1;
+      menuitem = static_cast<int>(menuitem) - 1; //cast enum type to integer in order to increment or decrement the count
     }
     else{
       menuitem = RESET;
@@ -320,7 +315,7 @@ void navigateInMenuUp(){
 void navigateInMenuDown(){  
   if(page == MAIN_MENU){      
     if(menuitem < RESET){
-        menuitem = static_cast<int>(menuitem) + 1;
+        menuitem = static_cast<int>(menuitem) + 1;   //cast enum type to integer in order to increment or decrement the coun
     }
     else{
         menuitem = SETPOINT;
@@ -339,7 +334,7 @@ void pressButtonAction(){
   }     
   else if(page == SUB_MENU){      
     page = MAIN_MENU; 
-    oldPage = SUB_MENU;          
+    oldPage = SUB_MENU;   // flag to be set for csreen refresh when entering one of main screen manus       
   }   
   middle = false;   
 }
@@ -347,7 +342,7 @@ void pressButtonAction(){
  void mainMenuAction(){
   if ( menuitem <= INTEGRA) { 
     page = SUB_MENU;
-    oldPage = MAIN_MENU;   
+    oldPage = MAIN_MENU; // flag to be set for csreen refresh when entering one of main screen manus         
   }
   else if( menuitem == PUMP) { // pum manual overwrite    
     if (pumpState){
@@ -382,9 +377,9 @@ float computePID(int input) {
   // Proportional term
   float pTerm = kp * error;
 
-  // Integral term
+  // Integral term 
   integral += error * timeChange;
-  if (integral > 1000) integral = 1000;
+  if (integral > 1000) integral = 1000;  //limit the Integral to prevent creeping up
   else if (integral < -1000) integral = -1000;
   float iTerm = ki * integral;
   
@@ -425,7 +420,7 @@ void dequeue() {
 
 // Task to check soil moisture
 void checkMoisture(){    
-  isCountingDown=false; //make sure we have actual data before printing to screent   
+  isCountingDown = false; //flag to not let the new values to be printed yet   
   lastMoistureValue = analogRead(moisturePin); // Read the moisture level
   lastMoistureValue = map(lastMoistureValue ,drySoil ,wetSoil ,0 ,100); // map the range in percantage
   float pidOutput = computePID(lastMoistureValue); // Calculate the PID output
@@ -440,18 +435,19 @@ void checkMoisture(){
   Serial.print("PID output in ms: ");
   Serial.println(pidOutput); 
 #endif  
-  if (pidOutput > 0 && !pumpState && waterUsedToday < flow_limit) {
+  //Check if PID output is positive number and Pump is not running and dayly water supply limit is not exceeding dayly limit
+  if (pidOutput > 0 && !pumpState && waterUsedToday < waterSupplyLimit) {
     isCountingDown = true;  //now print new data to screen
-    pumpRunTime = ((unsigned long)pidOutput);   // cast to positive number from PID-calculation
+    pumpRunTime = pidOutput;   // cast to positive number from PID-calculation
     pumpRunTimePerDay += pumpRunTime;         //accumulate the total runtim
-    pumpRunTimePerDay = dataLoggingForTimeTotal(millis()); //check if 24h overflow happened
+    pumpRunTimePerDay = dataLoggingForTimeTotal(currentTime); //check if 24h overflow happened
 #ifdef DEBUG    
     Serial.println("Moisture low. Turning on the pump...");   
     Serial.print("pump runtime: ");
     Serial.println(pumpRunTime); 
     Serial.print("ml");  
 #endif    
-    digitalWrite(relayPin, LOW); // Turn on the pump, which is active LO
+    digitalWrite(relayPin, LOW); // Turn on the pump, which is active LOW
     pumpState = true;    
     enqueue(calculateWaterFlow,0);  //monitor flow meter while pump is on
     isCountingDown = true;  //now print new data to screen     
@@ -481,12 +477,8 @@ void stopPump() {
 }
 
 // Interrupt service routine for flow sensor
-void flowSensorISR() {
-  unsigned long currentPulseTime = millis();
-  if (currentPulseTime - lastFlowPulseTime > 5) { // Debounce time in ms
+void flowSensorISR() {  
     flowPulseCount++;
-    lastFlowPulseTime = currentPulseTime;
-  }
 }
 
 // Function to calculate water flow and usage
@@ -511,49 +503,20 @@ void calculateWaterFlow() {
     lastCalcTime = currentTime;
 
     // Check and reset if 24 hours have passed
-    if (currentTime - startingTimeStamp > resetInterval) {
-        waterUsedToday = 0.0;
-        startingTimeStamp = currentTime;
+    waterUsedToday = dataLoggingForTimeTotal(currentTime); //check if 24h time period overflown and if yes reset value to 0 
+    
 #ifdef DEBUG        
         Serial.println("24 hours passed. Water usage reset.");
 #endif        
-    }
+    
   }
-  //waterUsedToday = dataLoggingForTimeTotal(millis()); //check if 24h time period overflown and if yes reset value to 0 
 }  
 
-//Graphics for screen startup
-void startIpDisplay(){
-  tft.drawRoundRect(40, 90, 40,25,5, ST7735_BLACK);
-  tft.fillRoundRect(40, 90, 40,25,5, ST7735_BLACK);
-  tft.setCursor(55, 95);
-  tft.println(count);
-  switch (count){
-    case 9: tft.fillRect(22, 128, 8, 19,ST7735_RED);
-      break;
-    case 8: tft.fillRect(33, 128, 8, 19,ST7735_YELLOW);
-      break;
-    case 7:  tft.fillRect(44, 128, 8, 19,ST7735_YELLOW);
-      break;
-    case 6: tft.fillRect(55, 128, 8, 19,ST7735_GREEN);
-      break;
-    case 5: tft.fillRect(66, 128, 8, 19,ST7735_GREEN);
-      break;
-    case 4: tft.fillRect(77, 128, 8, 19,ST7735_GREEN);
-      break;
-    case 3: tft.fillRect(88, 128, 8, 19,ST7735_GREEN);
-      break;
-    case 2: tft.fillRect(98, 128, 8, 19,ST7735_GREEN);
-      break;  
-    case 1: tft.fillRect(108, 128, 8, 19,ST7735_GREEN);
-      break;                                            
-  }  
-}
 void drawRefreshSubMenu(){
-    if (page != oldPage) {
-    tft.fillRect(0,55,128,105,ST7735_BLACK);  //refresh half of the screen when entering menu page first time
+    if (page != oldPage) { //refresh a menu screen when entering menu page first time
+    tft.fillRect(0,55,128,105,ST7735_BLACK);  
     drawSubMenu();
-     oldPage = SUB_MENU;    
+    oldPage = SUB_MENU;    
   }
   else{
     drawSubMenu();
@@ -563,26 +526,26 @@ void drawRefreshSubMenu(){
 void drawSubMenu(){ 
   switch(menuitem){
     case SETPOINT:       
-      displayIntMenuPage(menuItems[SETPOINT], setpoint);
+      displayItemMenuPage(menuItems[SETPOINT], setpoint);
       break;
     case FLOW:
-      displayIntMenuPage(menuItems[FLOW], flow_limit);
+      displayItemMenuPage(menuItems[FLOW], waterSupplyLimit);
       break;
     case PROPORT:    
-      displayIntMenuPage(menuItems[PROPORT], kp);
+      displayItemMenuPage(menuItems[PROPORT], kp);
       break;
     case INTEGRA:     
-      displayIntMenuPage(menuItems[INTEGRA], ki);
+      displayItemMenuPage(menuItems[INTEGRA], ki);
       break;
     case PUMP:           
-      displayIntMenuPage(menuItems[PUMP], (int)pumpState);
+      displayItemMenuPage(menuItems[PUMP], (int)pumpState);
     break;
   }     
 }  
 
 void drawRefreshMainMenu(){
-  if (page != oldPage) {
-    tft.fillRect(0,55,128,105,ST7735_BLACK);  //refresh half of the screen when entering menu page first time
+  if (page != oldPage) { //refresh a menu screen when entering menu page first time
+    tft.fillRect(0,55,128,105,ST7735_BLACK);  
     drawMainMenu(); 
     oldPage = MAIN_MENU;  
   }
@@ -617,7 +580,7 @@ void refreshFrame(int frame, int menuitem) {
   }
 }
 
-void displayIntMenuPage(String menuItem, float value){    
+void displayItemMenuPage(String menuItem, float value){    
   tft.setTextSize(2);  
   tft.setTextColor(ST7735_GREEN, ST7735_BLACK);
   tft.setCursor(5, 55);
@@ -674,7 +637,6 @@ void frameAligmentDown(){
   else  if(menuitem == PUMP && lastMenuItem == INTEGRA && frame!=4)  {
     frame ++;
   }      
-
   lastMenuItem = menuitem;
   down =false;
 }
@@ -685,7 +647,7 @@ void valueAdjustment(){
       setpoint++;
     }
     else if ( menuitem == FLOW ) {
-      flow_limit = flow_limit + 0.1 ;
+      waterSupplyLimit = waterSupplyLimit + 0.1 ;
     }
     else if ( menuitem == PROPORT  ) {
       kp=kp+0.1;
@@ -701,7 +663,7 @@ void valueAdjustment(){
       setpoint--;
     }
     else if ( menuitem == FLOW) {     
-     flow_limit = flow_limit - 0.1 ;
+     waterSupplyLimit = waterSupplyLimit - 0.1 ;
     }
     else if (menuitem == PROPORT ) {
       kp=kp-0.1;    
@@ -713,13 +675,8 @@ void valueAdjustment(){
   }  
 }
 
-void  refreshmenu(){
-  tft.fillRect(0,55,128,105,ST7735_BLACK);  //refresh half of the screen
-}
-
-
-void ScreenStartUpSequance(){
-  //run intro graphics
+#ifndef DEBUG
+void ScreenStartUpSequance(){   //run screen intro graphics
   tft.drawRoundRect(3, 5, 122, 150,5, ST7735_BLUE);
   tft.setCursor(30, 20);
   tft.setTextColor(ST7735_GREEN);
@@ -738,6 +695,35 @@ void ScreenStartUpSequance(){
   }
   tft.fillScreen(ST7735_BLACK); // Clear the screen (white background) 
 }
+
+//Graphics for screen startup
+void startIpDisplay(){
+  tft.drawRoundRect(40, 90, 40,25,5, ST7735_BLACK);
+  tft.fillRoundRect(40, 90, 40,25,5, ST7735_BLACK);
+  tft.setCursor(55, 95);
+  tft.println(count);
+  switch (count){
+    case 9: tft.fillRect(22, 128, 8, 19,ST7735_RED);
+      break;
+    case 8: tft.fillRect(33, 128, 8, 19,ST7735_YELLOW);
+      break;
+    case 7:  tft.fillRect(44, 128, 8, 19,ST7735_YELLOW);
+      break;
+    case 6: tft.fillRect(55, 128, 8, 19,ST7735_GREEN);
+      break;
+    case 5: tft.fillRect(66, 128, 8, 19,ST7735_GREEN);
+      break;
+    case 4: tft.fillRect(77, 128, 8, 19,ST7735_GREEN);
+      break;
+    case 3: tft.fillRect(88, 128, 8, 19,ST7735_GREEN);
+      break;
+    case 2: tft.fillRect(98, 128, 8, 19,ST7735_GREEN);
+      break;  
+    case 1: tft.fillRect(108, 128, 8, 19,ST7735_GREEN);
+      break;                                            
+  }  
+}
+#endif
 
 //24h log refresh
 int dataLoggingForTimeTotal(unsigned long currentTime){
