@@ -507,8 +507,7 @@ void calculateWaterFlow() {
     
 #ifdef DEBUG        
         Serial.println("24 hours passed. Water usage reset.");
-#endif        
-    
+#endif 
   }
 }  
 
@@ -591,8 +590,10 @@ void displayItemMenuPage(String menuItem, float value){
   tft.setTextSize(3);
   tft.setCursor(10, 105);
   if(menuitem < FLOW){    //for first two items in menu - adjustable value is in whole numbers
-    int castedValue = (int)value;
-    tft.print(castedValue);
+    int castedValue = (int)value
+    char buff[6]; // 3 characters + NUL
+    sprintf(buff, "%3d",castedValue);       // Right-justified 3 digits
+    tft.print(buff);
   }
   else{      
     tft.print(value);
