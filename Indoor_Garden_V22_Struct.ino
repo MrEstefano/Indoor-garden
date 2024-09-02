@@ -1,3 +1,4 @@
+
 /**************************************************************************************/
 /*  Name    : Indoor Garden V22                                                       */
 /*  Author  : Stefan Zakutansky ATU.ie student                                        */
@@ -40,8 +41,8 @@
 #define FLOW_SENSOR_PIN 2    /*hardware interrupt pin*/
 #define relayPin 9           /* Pump is contrpolled via PUMP+ on PCB*/
 #define moisturePin A0        /* Capacitive moisture sensor is connected to SOIL on PCB*/
-#define drySoil 800         /* dry soil moisture value from calibration*/
-#define wetSoil 376         /* wet soil moisture value from calibration*/
+#define drySoil 1023         /* dry soil moisture value from calibration*/
+#define wetSoil 250         /* wet soil moisture value from calibration*/
 
 //TFT screen entity
 Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK, TFT_RST);
@@ -70,16 +71,16 @@ String printChild[TOTAL_ITEMS] = {"SETPOINT ",
                                  "RESET    "};
 
 
-typedef struct {
+typedef struct context{
     int frame = 1;
     Page parent = MAIN_MENU;
     Page lastParent = SUB_MENU;
     Menu_item child = SETPOINT; 
     Menu_item lastChild;
-    String printChild[TOTAL_ITEMS];
+    //String printChild[TOTAL_ITEMS];
     volatile bool navigateDownFlag = false;
     volatile bool navigateUpFlag = false;
-} *context MENU;
+};context MENU;
 
 /*
 Page page = MAIN_MENU;   
@@ -90,45 +91,47 @@ Menu_item lastMenuItem;
 
 //Rotary encoder variables
 ClickEncoder *encoder;
-typedef struct {
+typedef struct encoderButton {
     volatile bool up = false;
     volatile bool down = false;
     volatile bool middle = false;
     volatile bool lastMiddleState = false;
-    int16_t last, value;
-} *encoder ROTARY;
+    int16_t last;
+    int16_t value;
+};encoderButton ROTARY;
 
 //Pump controll 
-typedef struct{
-    unsigned float runTime = 0; // How long to run the pump (60 seconds)
+typedef struct waterControll {
+    float runTime = 0; // How long to run the pump (60 seconds)
     volatile bool state = false;
-    volatile unsigned float runTimeTotal = 0;
-} *waterControll PUMP;
+    float runTimeTotal = 0;
+}; waterControll WATERPUMP;
+
 
 //PID variables - kp,ki,kd were calibrated
-typedef struct {
+typedef struct controller {
     float kp = 1.97;      // Proportional gain - original = 2;
     float ki = 0.80;      // Integral gain - original 0.1;
     float kd = 1.18;      // Derivative gain - original 1;
     float lastError = 0;
     float integral = 0;
     unsigned long lastTimeChecked = 0;
-} *controller PID;
+};controller PID;
 
 //Soil Moisture sensor 
-typedef struct {
-    unsigned int setpoint = 70;  // Desired soil moisture level
-    unsigned int lastTimeChecked = 0; // Stores the last measured soil moisture value
+typedef struct soil {
+      int setpoint = 70;  // Desired soil moisture level
+    unsigned int lastMoistureValue = 0; // Stores the last measured soil moisture value
     const unsigned long checkInterval = 120000; // Interval to check moisture 2 minute)
-} *soil MOISTURE;
+};soil  MOISTURE;
  
 // Flow sensor 
-typedef struct {
+typedef struct irrigation {
     const float calibrationFactor = 16.6;//9 at .11 flow  // This factor may vary depending on the sensor
     volatile unsigned int flowPulseCount = 0;
     volatile float usageTotal = 0.0; // Liters used today
     float supplyLimit = 1.0; // 1 liter
-} *irrigation WATER;
+};irrigation WATER;
 
 //global variables
 const byte count =10;
@@ -177,7 +180,7 @@ void frameAligmentUP();
 void frameAligmentDown();
 void valueAdjustment();
 void pressButtonAction();
-void displayItemMenuPage(String menuItem, float value);
+void displayItemMenuPage(context menuItem, float value);
 void displayMenuItem(String item, int position, boolean selected);
 void mainMenuAction(); 
 void updateSoilMoistureDisplay();
@@ -248,8 +251,8 @@ void resetDefaults(){
   WATER.supplyLimit = 1.0;
   PID.kp = 1.97;      // Proportional gain - original = 2;
   PID.ki = 0.80;      // Integral gain - original 0.1;
-  PUMP.state = true;
-  MENU.printChild[PUMP] = "PUMP: OFF";    
+  WATERPUMP.state = true;
+  printChild[PUMP] = "PUMP: OFF";    
 }
 
 void timerIsr() {
@@ -290,7 +293,7 @@ void drawMenu() {
     tft.setCursor(5, 5);
     tft.println("SOIL:");
     tft.setCursor(65, 5);    
-    tft.println(MOISTURE.lastTimeChecked);
+    tft.println(MOISTURE.lastMoistureValue);
     tft.setCursor(105, 5);
     tft.println("%");     
     //2nd line    
@@ -323,7 +326,7 @@ void navigateInMenuUp(){
       MENU.child = static_cast<int>(MENU.child) - 1; //cast enum type to integer in order to increment or decrement the count
     }
     else{
-      MENU.child = RESET;
+      MENU.child = SETPOINT;
     }     
     frameAligmentUP(); 
   }
@@ -339,7 +342,7 @@ void navigateInMenuDown(){
         MENU.child = static_cast<int>(MENU.child) + 1;   //cast enum type to integer in order to increment or decrement the coun
     }
     else{
-        MENU.child = SETPOINT;
+        MENU.child = RESET;
     }
     frameAligmentDown(); 
   }          
@@ -366,16 +369,16 @@ void pressButtonAction(){
     MENU.lastParent = MAIN_MENU; // flag to be set for csreen refresh when entering one of main screen manus         
   }
   else if( MENU.child == PUMP) { // pum manual overwrite    
-    if (PUMP.state){
-      PUMP.state = false;
+    if (WATERPUMP.state){
+      WATERPUMP.state = false;
       tft.setTextColor(ST7735_GREEN, ST7735_BLACK);
-      MENU.printChild[PUMP] = "PUMP: OFF";
+      printChild[PUMP] = "PUMP: OFF";
       digitalWrite(relayPin, HIGH); // Turn on the pump, which is active LO
     }
     else{
-      PUMP.state = true; 
+      WATERPUMP.state = true; 
       tft.setTextColor(ST7735_GREEN, ST7735_BLACK);
-      MENU.printChild[PUMP] = "PUMP: ON ";
+      printChild[PUMP] = "PUMP: ON ";
       digitalWrite(relayPin, LOW); // Turn on the pump, which is active LO
     }
   }
@@ -389,9 +392,9 @@ float computePID(int input) {
   unsigned long currentTime = millis();
   float timeChange = (float)(currentTime - PID.lastTimeChecked) / 1000.0; // Convert to seconds
   
-  if(timeChange <= 0.0){
-      return 0;
-  }
+  //if(timeChange <= 0.0){
+  //    return 0;
+  //}
   // Calculate the error
   float error = MOISTURE.setpoint - input;
 
@@ -400,8 +403,8 @@ float computePID(int input) {
 
   // Integral term 
   PID.integral += error * timeChange;
-  if (PID.integral > 1000) PID.integral = 1000;  //limit the Integral to prevent creeping up
-  else if (PID.integral < -1000) PID.integral = -1000;
+  //if (PID.integral > 1000) PID.integral = 1000;  //limit the Integral to prevent creeping up
+  //else if (PID.integral < -1000) PID.integral = -1000;
   float iTerm = PID.ki * PID.integral;
   
   // Derivative term
@@ -441,17 +444,18 @@ void dequeue() {
 
 // Task to check soil moisture
 void checkMoisture(){    
+  long currentTime = millis();
   isCounting = false; //flag to not let the new values to be printed yet   
-  MOISTURE.lastTimeChecked = analogRead(moisturePin); // Read the moisture leve
+  MOISTURE.lastMoistureValue = analogRead(moisturePin); // Read the moisture leve
 #ifdef DEBUG
   Serial.print("Raw Soil Moisture Level: ");
-  Serial.println(MOISTURE.lastTimeChecked);  
+  Serial.println(MOISTURE.lastMoistureValue);  
 #endif  
-  MOISTURE.lastTimeChecked = map(MOISTURE.lastTimeChecked ,drySoil ,wetSoil ,0 ,100); // map the range in percantage
-  float pidOutput = computePID(MOISTURE.lastTimeChecked); // Calculate the PID output
+  MOISTURE.lastMoistureValue = map(MOISTURE.lastMoistureValue ,drySoil ,wetSoil ,0 ,100); // map the range in percantage
+  float pidOutput = computePID(MOISTURE.lastMoistureValue); // Calculate the PID output
 #ifdef DEBUG 
   Serial.print("Soil Moisture Level: ");
-  Serial.print(MOISTURE.lastTimeChecked);  
+  Serial.print(MOISTURE.lastMoistureValue);  
   Serial.println(" %");  
   Serial.print("Setpoint: ");
   Serial.println(MOISTURE.setpoint);     
@@ -459,22 +463,22 @@ void checkMoisture(){
   Serial.println(pidOutput); 
 #endif  
   //Check if PID output is positive number and Pump is not running and dayly water supply limit is not exceeding dayly limit
-  if (pidOutput > 0 && !PUMP.state && WATER.usageTotal < WATER.supplyLimit) {
+  if (pidOutput > 0 && !WATERPUMP.state && WATER.usageTotal < WATER.supplyLimit) {
     isCounting = true;  //now print new data to screen
-    PUMP.runTime = pidOutput;   // cast to positive number from PID-calculation
-    PUMP.runTimeTotal += PUMP.runTime;         //accumulate the total runtim
-    PUMP.runTimeTotal = dataLoggingForTimeTotal(currentTime); //check if 24h overflow happened
+    WATERPUMP.runTime = pidOutput;   // cast to positive number from PID-calculation
+    WATERPUMP.runTimeTotal += WATERPUMP.runTime;         //accumulate the total runtim
+    WATERPUMP.runTimeTotal = dataLoggingForTimeTotal(currentTime); //check if 24h overflow happened
 #ifdef DEBUG    
     Serial.println("Moisture low. Turning on the pump...");   
     Serial.print("pump runtime: ");
-    Serial.println(PUMP.runTime); 
+    Serial.println(WATERPUMP.runTime); 
     Serial.print("ml");  
 #endif    
     digitalWrite(relayPin, LOW); // Turn on the pump, which is active LOW
-    PUMP.state = true;    
+    WATERPUMP.state = true;    
     enqueue(calculateWaterFlow,0);  //monitor flow meter while pump is on
     isCounting = true;  //now print new data to screen     
-    enqueue(stopPump, PUMP.runTime); // Schedule a task to stop the pump after 30 seconds    
+    enqueue(stopPump, WATERPUMP.runTime); // Schedule a task to stop the pump after 30 seconds    
     enqueue(checkMoisture, MOISTURE.checkInterval); // Re-schedule the moisture check task
   }
   else { 
@@ -488,14 +492,14 @@ void checkMoisture(){
 
 // Task to stop the pump
 void stopPump() {
-  if(PUMP.state){  //protection if user decides to increase sampling rate
+  if(WATERPUMP.state){  //protection if user decides to increase sampling rate
 #ifdef DEBUG
     Serial.print("Total pump run time in day:");
-    Serial.println(PUMP.runTimeTotal);    
+    Serial.println(WATERPUMP.runTimeTotal);    
     Serial.println("Turning off the pump...");
 #endif        
     digitalWrite(relayPin, HIGH); // Turn off the relay
-    PUMP.state = false;    
+    WATERPUMP.state = false;    
   }
 }
 
@@ -548,19 +552,19 @@ void drawRefreshSubMenu(){
 void drawSubMenu(){ 
   switch(MENU.child){
     case SETPOINT:       
-      displayItemMenuPage(MENU.printChild[SETPOINT], MOISTURE.setpoint);
+      displayItemMenuPage(printChild[SETPOINT], MOISTURE.setpoint);
       break;
     case FLOW:
-      displayItemMenuPage(MENU.printChild[FLOW], WATER.supplyLimit);
+      displayItemMenuPage(printChild[FLOW], WATER.supplyLimit);
       break;
     case PROPORT:    
-      displayItemMenuPage(MENU.printChild[PROPORT], PID.kp);
+      displayItemMenuPage(printChild[PROPORT], PID.kp);
       break;
     case INTEGRA:     
-      displayItemMenuPage(MENU.printChild[INTEGRA], PID.ki);
+      displayItemMenuPage(printChild[INTEGRA], PID.ki);
       break;
     case PUMP:           
-      displayItemMenuPage(MENU.printChild[PUMP], (float)PUMP.state);
+      displayItemMenuPage(printChild[PUMP], (float)WATERPUMP.state);
     break;
   }     
 }  
@@ -597,8 +601,8 @@ void refreshFrame(int frame, int menuitem) {
   int yPos = 80;
 
   for (int i = firstItem; i <= lastItem; i++, yPos += 25) {
-    bool selected = (i == MENU.child);
-    displayMenuItem(MENU.printChild[i], yPos, selected);
+    bool selected = (i == menuitem);
+    displayMenuItem(printChild[i], yPos, selected);
   }
 }
 
@@ -612,8 +616,8 @@ void displayItemMenuPage(String menuItem, float value){
   tft.print("Value     ");    
   tft.setTextSize(3);
   tft.setCursor(10, 105);
-  if(menuitem < FLOW){    //for first two items in menu - adjustable value is in whole numbers
-    int castedValue = (int)value
+  if(MENU.child < FLOW){    //for first two items in menu - adjustable value is in whole numbers
+    int castedValue = (int)value;
     char buff[6]; // 3 characters + NUL
     sprintf(buff, "%3d",castedValue);       // Right-justified 3 digits
     tft.print(buff);
