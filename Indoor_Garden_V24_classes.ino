@@ -42,8 +42,8 @@
 #define FLOW_SENSOR_PIN 2    /*hardware interrupt pin*/
 #define relayPin 9           /* Pump is contrpolled via PUMP+ on PCB*/
 //#define pin_A0 A0        /* Capacitive moisture sensor is connected to SOIL on PCB*/
-#define drySoil 1023         /* dry soil moisture value from calibration*/
-#define wetSoil 250         /* wet soil moisture value from calibration*/
+//#define drySoil 1023         /* dry soil moisture value from calibration*/
+//#define wetSoil 250         /* wet soil moisture value from calibration*/
 
 //TFT screen entity
 Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK, TFT_RST);
@@ -131,11 +131,18 @@ private:
     //double fuelLevel;
     uint8_t _pin;                  //hardware pin number
     uint8_t setpoint;  // Desired soil moisture level    
+    unit16_t drySoil;
+    unit16_t wetSoil;
     unsigned uint16_t moistureValue ; // Stores the last measured soil moisture value
-    const unsigned long checkInterval; // Interval to check moisture 2 min
+    unsigned long checkInterval; // Interval to check moisture 2 min
 public:
-    //Car() : speed(0), fuelLevel(100.0) {}
-    Soil() : setpoint(70), MoistureValue(0), checkInterval(120000), {};
+    
+    Soil() :  setpoint(70),
+              moistureValue(0), 
+              checkInterval(120000),
+              drySoil(1023),
+              wetSoil(200),
+              {};
 
     analogPin(uint8_t _pin);
 
@@ -154,8 +161,8 @@ public:
         return lastMoistureValue = map(moistureValue ,drySoil ,wetSoil ,0 ,100); // map the range in percantage
     }
       
-    void checkInterval(unsigned int newCheckInterval) {
-        checkInterval =  newCheckInterval * 1000;
+    unsigned long checkInterval() {
+        return checkInterval;
     }
 };
 
@@ -231,7 +238,7 @@ void refreshFrame(int frame, int menuitem);
 
 void setup() {
   Serial.begin(9600);
-  pinMode(moisturePin, INPUT);
+  //pinMode(moisturePin, INPUT);
   pinMode(relayPin, OUTPUT);
   digitalWrite(relayPin, HIGH); // Initially turn off the pump
   pinMode(ENCODER_SW, INPUT_PULLUP); // Set encoder button as input with internal pull-up
