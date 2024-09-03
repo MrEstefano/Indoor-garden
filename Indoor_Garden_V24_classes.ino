@@ -1,6 +1,6 @@
 
 /**************************************************************************************/
-/*  Name    : Indoor Garden V24                                                    */
+/*  Name    : Indoor Garden V24 with Class                                                   */
 /*  Author  : Stefan Zakutansky ATU.ie student                                        */
 /*  Date    : 3. 9.2023                                                              */
 /*  Notes   : The code operates on Queuing architecture to faciliate a "mutex" for    */
@@ -24,7 +24,7 @@
 #include <TimerOne.h>
 
 
-#define DEBUG 0  //If defined with Zero disables Serial.print, One activates 
+//#define DEBUG 0  //If defined with Zero disables Serial.print, One activates 
 
 // Pin definitions for the 1.77-inch TFT (ST7735)
 #define TFT_CS  6
@@ -124,68 +124,72 @@ typedef struct irrigation {
 
 //Soil Moisture sensor 
 
+
 class Soil {
 private:
-    uint8_t _pin;      //hardware pin number
-    uint8_t setpoint;  // Desired soil moisture level    
-    unit16_t drySoil;
-    unit16_t wetSoil;
-    unit8_t constrainedMoistureValue;
-    unsigned uint16_t moistureValue ; // Stores the last measured soil moisture value
+    int _pin;      //hardware pin number
+    int setpoint;
+    int drySoil;
+    int wetSoil;
+    int constrainedMoistureValue;
+    unsigned int moistureValue; // Stores the last measured soil moisture value
     unsigned long checkInterval; // Interval to check moisture 2 min
-public:
-    
-    Soil() :  setpoint(70),
-              moistureValue(0), 
-              checkInterval(120000),
-              drySoil(1023),
-              wetSoil(200),
-              {};
-
-    analogPin(uint8_t _pin);
-
-    uint16_t checkMoisture(){              
-     return moistureValue = analogRead(moistureSensor); // Read the moisture leve        
-    }
-
-    void updateSetpoint( unit8_t adjustment) {
-        setpoint += adjustment;
-    }
-
-    uint8_t setpoint() {
-        return setpoint;
-    }  
-      
-    uint8_t constrainedValu(){
-        return constrainedMoistureValue = map(moistureValue ,drySoil ,wetSoil ,0 ,100); // map the range in percantage
-    }
-      
-    unsigned long checkInterval() {
-        return checkInterval;
-    }
+public:  
+    //constructor prototype
+    Soil(int pin);  
+    //functions ptototypes     
+    int check();// Read the moisture leve        
+    void updateSetpoint(int adjustment);
+    int setpointIs();      
+    int percentValu();      
+    unsigned long checkIntervalIs();
 };
 
 //constructor aka initialize
-Soil::analogPin(uint8_t _pin) {
-  pin = _pin;
-  pinMode(pin, INPUT_PULLUP);
+Soil::Soil(int pin) {
+  _pin = pin ;      
+  setpoint = 70; 
+  drySoil = 1023;
+  wetSoil = 260;
+  constrainedMoistureValue;
+  moistureValue = 0; // Stores the last measured soil moisture value
+  checkInterval = 120000; // Interval to check moisture 2 min
+  pinMode(pin, INPUT);
+}
+const int pin_A0 = A0;  //A0 
+//instances
+Soil soilMoisture(pin_A0);
+
+int Soil::check(){              
+  return moistureValue = analogRead(_pin); // Read the moisture leve        
 }
 
-//instances
-Soil mySoil;
-const uint8_t pin_A0 = 14;  //A0 
-analogPin moistureSensor(pin_A0);
+void Soil::updateSetpoint( int adjustment) {
+  setpoint += adjustment;
+}
 
+int Soil::setpointIs() {
+  return setpoint;
+}  
+  
+int Soil::percentValu(){
+  return constrainedMoistureValue = map(moistureValue ,drySoil ,wetSoil ,0 ,100); // map the range in percantage
+}
+  
+unsigned long Soil::checkIntervalIs() {
+  return checkInterval;
+}
 //end of class Soil
 
 //global variables
-const byte count =10;
+byte count =10;
 volatile bool isCounting = true; // Indicates if a countdown is active
 unsigned long countdownTime = 0; // Holds the countdown time for display
 
 //data logging variables
 unsigned long startingTimeStamp = 0;
 const unsigned long resetInterval = 86400000UL; // 24 hours in milliseconds
+
 
 // Structure for a task in the queue
 struct Task {
@@ -232,6 +236,7 @@ void updateSoilMoistureDisplay();
 void updateCountdownDisplay();
 void updateMenuDisplay();
 void refreshFrame(int frame, int menuitem); 
+int dataLoggingForTimeTotal(unsigned long currentTime);
 
 //------------------------------------------------------------------------------
 // SETUP
@@ -292,7 +297,7 @@ void loop() {
 //------------------------------------------------------------------------------
 
 void resetDefaults(){
-  mySoil.setpoint()=70;
+  soilMoisture.setpointIs();
   WATER.supplyLimit = 1.0;
   PID.kp = 1.97;      // Proportional gain - original = 2;
   PID.ki = 0.80;      // Integral gain - original 0.1;
@@ -336,9 +341,9 @@ void drawMenu() {
     tft.setTextColor(ST7735_GREEN, ST7735_BLACK);
     tft.setTextSize(2);
     tft.setCursor(5, 5);
-    tft.println("SOIL:");
+    tft.println(F("SOIL:"));
     tft.setCursor(65, 5);    
-    tft.println(MOISTURE.lastMoistureValue);
+    tft.println(soilMoisture.percentValu());
     tft.setCursor(105, 5);
     tft.println("%");     
     //2nd line    
@@ -352,7 +357,7 @@ void drawMenu() {
     tft.setCursor(70, 30);
     tft.setTextColor(ST7735_GREEN, ST7735_BLACK);
     tft.print(buff); // Display countdown in seconds right side justified
-    tft.print("s");
+    tft.print(F("s"));
   }   
   
   //3rd line - half of screen
@@ -441,7 +446,7 @@ float computePID(int input) {
   //    return 0;
   //}
   // Calculate the error
-  float error =  mySoil.setpoint() - input;
+  float error =  soilMoisture.setpointIs() - input;
 
   // Proportional term
   float pTerm = PID.kp * error;
@@ -490,21 +495,21 @@ void dequeue() {
 // Task to check soil moisture
 void checkMoisture(){    
   long currentTime = millis();
-  isCounting = false; //flag to not let the new values to be printed yet   
-
+  isCounting = false; //flag to not let the new values to be printed yet
+   
 #ifdef DEBUG
-  Serial.print("Raw Soil Moisture Level: ");
-  Serial.println(mySoil.checkMoisture();  
+  Serial.print(F("Raw Soil Moisture Level: "));
+  Serial.println(soilMoisture.check());  
 #endif  
  
-  float pidOutput = computePID(mySoil.constrainedValu()); // Calculate the PID output
+  float pidOutput = computePID(soilMoisture.percentValu()); // Calculate the PID output
 #ifdef DEBUG 
-  Serial.print("Soil Moisture Level: ");
-  Serial.print(mySoil.constrainedValu());  
+  Serial.print(F("Soil Moisture Level: "));
+  Serial.print(soilMoisture.percentValu());  
   Serial.println(" %");  
-  Serial.print("Setpoint: ");
-  Serial.println(mySoil.setpoint());     
-  Serial.print("PID output in ms: ");
+  Serial.print(F("Setpoint: "));
+  Serial.println(soilMoisture.setpointIs());     
+  Serial.print(F("PID output in ms: "));
   Serial.println(pidOutput); 
 #endif  
   //Check if PID output is positive number and Pump is not running and dayly water supply limit is not exceeding dayly limit
@@ -514,24 +519,24 @@ void checkMoisture(){
     WATERPUMP.runTimeTotal += WATERPUMP.runTime;         //accumulate the total runtim
     WATERPUMP.runTimeTotal = dataLoggingForTimeTotal(currentTime); //check if 24h overflow happened
 #ifdef DEBUG    
-    Serial.println("Moisture low. Turning on the pump...");   
-    Serial.print("pump runtime: ");
+    Serial.println(F("Moisture low. Turning on the pump..."));   
+    Serial.print(F("pump runtime: "));
     Serial.println(WATERPUMP.runTime); 
-    Serial.print("ml");  
+    Serial.print(F("ml"));  
 #endif    
     digitalWrite(relayPin, LOW); // Turn on the pump, which is active LOW
     WATERPUMP.state = true;    
     enqueue(calculateWaterFlow,0);  //monitor flow meter while pump is on
     isCounting = true;  //now print new data to screen     
     enqueue(stopPump, WATERPUMP.runTime); // Schedule a task to stop the pump after 30 seconds    
-    enqueue(checkMoisture, mySoil.checkInterval()); // Re-schedule the moisture check task
+    enqueue(checkMoisture, soilMoisture.checkIntervalIs()); // Re-schedule the moisture check task
   }
   else { 
     isCounting = true;  //now print new data to screen
 #ifdef DEBUG    
-    Serial.println("Soil Moisture above treashold. Lets check again...in 2 min ");
+    Serial.println(F("Soil Moisture above treashold. Lets check again...in 2 min "));
 #endif    
-    enqueue(checkMoisture, mySoil.checkInterval());  //enter valu in seconds); // Re-schedule the moisture check task 
+    enqueue(checkMoisture, soilMoisture.checkIntervalIs());  //enter valu in seconds); // Re-schedule the moisture check task 
   }   
 }
 
@@ -539,9 +544,9 @@ void checkMoisture(){
 void stopPump() {
   if(WATERPUMP.state){  //protection if user decides to increase sampling rate
 #ifdef DEBUG
-    Serial.print("Total pump run time in day:");
+    Serial.print(F("Total pump run time in day:"));
     Serial.println(WATERPUMP.runTimeTotal);    
-    Serial.println("Turning off the pump...");
+    Serial.println(F("Turning off the pump..."));
 #endif        
     digitalWrite(relayPin, HIGH); // Turn off the relay
     WATERPUMP.state = false;    
@@ -566,9 +571,9 @@ void calculateWaterFlow() {
     // Total liters passed
     WATER.usageTotal += (flowRate / 60.0);  // Convert flow rate to liters per second
 #ifdef DEBUG    
-    Serial.print("Water used so far: ");
+    Serial.print(F("Water used so far: "));
     Serial.print(WATER.usageTotal);
-    Serial.println(" L");
+    Serial.println(F(" L"));
 #endif    
     // Reset pulse count and update time
     WATER.flowPulseCount = 0;
@@ -578,7 +583,7 @@ void calculateWaterFlow() {
     WATER.usageTotal = dataLoggingForTimeTotal(currentTime); //check if 24h time period overflown and if yes reset value to 0 
     
 #ifdef DEBUG        
-        Serial.println("24 hours passed. Water usage reset.");
+        Serial.println(F("24 hours passed. Water usage reset."));
 #endif 
   }
 }  
@@ -597,7 +602,7 @@ void drawRefreshSubMenu(){
 void drawSubMenu(){ 
   switch(MENU.child){
     case SETPOINT:       
-      displayItemMenuPage(printChild[SETPOINT],  mySoil.setpoint());
+      displayItemMenuPage(printChild[SETPOINT],  soilMoisture.setpointIs());
       break;
     case FLOW:
       displayItemMenuPage(printChild[FLOW], WATER.supplyLimit);
@@ -629,12 +634,12 @@ void drawMainMenu() {
   tft.setTextSize(2);  
   tft.setTextColor(ST7735_GREEN, ST7735_BLACK);
   tft.setCursor(3, 55);
-  tft.print("MAIN MENU");
+  tft.print(F("MAIN MENU"));
   tft.fillRect(0, 72, 128, 2, ST7735_GREEN);  // Draw a line   
 #ifdef DEBUG
-  Serial.print("frame: ");
+  Serial.print(F("frame: "));
   Serial.println(MENU.frame);
-  Serial.print("menuitem: ");
+  Serial.print(F("menuitem: "));
   Serial.println(MENU.child);
 #endif
   refreshFrame(MENU.frame, MENU.child);
@@ -658,7 +663,7 @@ void displayItemMenuPage(String menuItem, float value){
   tft.print(menuItem);
   tft.fillRect(0,72,128,2,ST7735_GREEN);  //draw a line
   tft.setCursor(5, 80);
-  tft.print("Value     ");    
+  tft.print(F("Value     "));    
   tft.setTextSize(3);
   tft.setCursor(10, 105);
   if(MENU.child < FLOW){    //for first two items in menu - adjustable value is in whole numbers
@@ -717,7 +722,7 @@ void frameAligmentDown(){
 void valueAdjustment(){
   if(ROTARY.up){  
     if (MENU.child == SETPOINT ) {
-      mySoil.updateSetpoint(1) {
+        soilMoisture.updateSetpoint(1);
     }
     else if ( MENU.child == FLOW ) {
       WATER.supplyLimit = WATER.supplyLimit + 0.1 ;
@@ -733,7 +738,7 @@ void valueAdjustment(){
 
   if(ROTARY.down){
     if (MENU.child == SETPOINT) {
-       mySoil.updateSetpoint(-1); 
+      soilMoisture.updateSetpoint(-1); 
 
     }
     else if ( MENU.child == FLOW) {     
@@ -755,11 +760,11 @@ void ScreenStartUpSequance(){   //run screen intro graphics
   tft.setCursor(30, 20);
   tft.setTextColor(ST7735_GREEN);
   tft.setTextSize(2);
-  tft.println("SYSTEM");
+  tft.println(F("SYSTEM"));
   tft.setCursor(30, 45);
-  tft.println("STARTS");
+  tft.println(F("STARTS"));
   tft.setCursor(50, 70);
-  tft.println("IN");
+  tft.println(F("IN"));
   tft.drawRect(8 , 125, 112, 25,ST7735_BLUE);
   tft.fillRect(11, 128, 8, 19, ST7735_RED);
     for (byte i = 10;count > 0;i--){
