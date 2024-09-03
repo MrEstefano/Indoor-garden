@@ -288,23 +288,23 @@ void drawMenu() {
     tft.setTextColor(ST7735_GREEN, ST7735_BLACK);
     tft.setTextSize(2);
     tft.setCursor(5, 5);
-    tft.println("SOIL:");
+    tft.println(F("SOIL:"));
     tft.setCursor(65, 5);    
     tft.println(MOISTURE.lastTimeChecked);
     tft.setCursor(105, 5);
-    tft.println("%");     
+    tft.println(F("%"));     
     //2nd line    
     tft.setCursor(5, 30);
     if (taskQueue[queueStart].function == checkMoisture) {
-      tft.println("Check");
+      tft.println(F("Check"));
     } 
     else if (taskQueue[queueStart].function == stopPump) {
-      tft.println("Pump ");
+      tft.println(F("Pump "));
     }
     tft.setCursor(70, 30);
     tft.setTextColor(ST7735_GREEN, ST7735_BLACK);
     tft.print(buff); // Display countdown in seconds right side justified
-    tft.print("s");
+    tft.print(F("s"));
   }   
   
   //3rd line - half of screen
@@ -517,9 +517,9 @@ void calculateWaterFlow() {
     // Total liters passed
     WATER.usageTotal += (flowRate / 60.0);  // Convert flow rate to liters per second
 #ifdef DEBUG    
-    Serial.print("Water used so far: ");
+    Serial.print(F("Water used so far: "));
     Serial.print(WATER.usageTotal);
-    Serial.println(" L");
+    Serial.println(F(" L"));
 #endif    
     // Reset pulse count and update time
     WATER.flowPulseCount = 0;
@@ -529,7 +529,7 @@ void calculateWaterFlow() {
     WATER.usageTotal = dataLoggingForTimeTotal(currentTime); //check if 24h time period overflown and if yes reset value to 0 
     
 #ifdef DEBUG        
-        Serial.println("24 hours passed. Water usage reset.");
+        Serial.println(F("24 hours passed. Water usage reset."));
 #endif 
   }
 }  
@@ -580,12 +580,12 @@ void drawMainMenu() {
   tft.setTextSize(2);  
   tft.setTextColor(ST7735_GREEN, ST7735_BLACK);
   tft.setCursor(3, 55);
-  tft.print("MAIN MENU");
+  tft.print(F("MAIN MENU"));
   tft.fillRect(0, 72, 128, 2, ST7735_GREEN);  // Draw a line   
 #ifdef DEBUG
-  Serial.print("frame: ");
+  Serial.print(F("frame: "));
   Serial.println(MENU.frame);
-  Serial.print("menuitem: ");
+  Serial.print(F("menuitem: "));
   Serial.println(MENU.child);
 #endif
   refreshFrame(MENU.frame, MENU.child);
@@ -609,7 +609,7 @@ void displayItemMenuPage(String menuItem, float value){
   tft.print(menuItem);
   tft.fillRect(0,72,128,2,ST7735_GREEN);  //draw a line
   tft.setCursor(5, 80);
-  tft.print("Value     ");    
+  tft.print(F("Value     "));    
   tft.setTextSize(3);
   tft.setCursor(10, 105);
   if(menuitem < FLOW){    //for first two items in menu - adjustable value is in whole numbers
@@ -705,11 +705,11 @@ void ScreenStartUpSequance(){   //run screen intro graphics
   tft.setCursor(30, 20);
   tft.setTextColor(ST7735_GREEN);
   tft.setTextSize(2);
-  tft.println("SYSTEM");
+  tft.println(F("SYSTEM"));
   tft.setCursor(30, 45);
-  tft.println("STARTS");
+  tft.println(F("STARTS"));
   tft.setCursor(50, 70);
-  tft.println("IN");
+  tft.println(F("IN"));
   tft.drawRect(8 , 125, 112, 25,ST7735_BLUE);
   tft.fillRect(11, 128, 8, 19, ST7735_RED);
     for (byte i = 10;count > 0;i--){
