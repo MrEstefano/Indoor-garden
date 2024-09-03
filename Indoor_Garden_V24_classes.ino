@@ -145,40 +145,43 @@ private:
     //int speed;
     //double fuelLevel;
     uint8_t _pin;                  //hardware pin number
-    uint8_t setpoint;  // Desired soil moisture level
-    
-    unsigned uint16_t lastMoistureValue = 0; // Stores the last measured soil moisture value
-    const unsigned long checkInterval = 120000; // Interval to check moisture 2 min
+    uint8_t setpoint;  // Desired soil moisture level    
+    unsigned uint16_t MoistureValue ; // Stores the last measured soil moisture value
+    const unsigned long checkInterval; // Interval to check moisture 2 min
 public:
     //Car() : speed(0), fuelLevel(100.0) {}
-    Soil() : setpoint(70), lastMoistureValue(0) {};
+    Soil() : setpoint(70), MoistureValue(0), checkInterval(120000),_pin {};
+
     moisturePin(uint8_t _pin);
 
-    int checkMoisture(unit8_t moisturePin){              
-        lastMoistureValue = analogRead(moisturePin); // Read the moisture leve
-        return lastMoistureValue = map(MOISTURE.lastMoistureValue ,drySoil ,wetSoil ,0 ,100); // map the range in percantage
+    void checkMoisture(unit8_t moisturePin){              
+      MoistureValue = analogRead(moisturePin); // Read the moisture leve        
     )
+    /*  
     void accelerate(int amount) {
         speed += amount;
         fuelLevel -= amount * 0.1;
     }
-
-    void brake() {
-        speed = 0;
+    */
+    void setpoint() {
+        setpoint = 70;
+    }
+    int constrainedValu(unit16_t lastMoistureValue){
+        return lastMoistureValue = map(MoistureValue ,drySoil ,wetSoil ,0 ,100); // map the range in percantage
     }
 
     void refuel(double amount) {
         fuelLevel += amount;
     }
 
-    void display() {
-        cout << "Speed: " << speed << ", Fuel Level: " << fuelLevel << endl;
+    void checkInterval() {
+        checkInterval = = 120000;
     }
 };
 
 int main() {
-    Car myCar;
-    myCar.accelerate(10);
+    Soil mySoil;
+    mySoil.moisturePin(moisturePin);
     myCar.brake();
     myCar.refuel(20);
     myCar.display();
