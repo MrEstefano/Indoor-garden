@@ -78,7 +78,6 @@ typedef struct context{
     Page lastParent = SUB_MENU;
     Menu_item child = SETPOINT; 
     Menu_item lastChild;
-    //String printChild[TOTAL_ITEMS];
     volatile bool navigateDownFlag = false;
     volatile bool navigateUpFlag = false;
 };context MENU;
@@ -127,12 +126,11 @@ typedef struct irrigation {
 
 class Soil {
 private:
-    //int speed;
-    //double fuelLevel;
-    uint8_t _pin;                  //hardware pin number
+    uint8_t _pin;      //hardware pin number
     uint8_t setpoint;  // Desired soil moisture level    
     unit16_t drySoil;
     unit16_t wetSoil;
+    unit8_t constrainedMoistureValue;
     unsigned uint16_t moistureValue ; // Stores the last measured soil moisture value
     unsigned long checkInterval; // Interval to check moisture 2 min
 public:
@@ -146,19 +144,20 @@ public:
 
     analogPin(uint8_t _pin);
 
-    void checkMoisture(){              
-      moistureValue = analogRead(analogPin); // Read the moisture leve        
+    uint16_t checkMoisture(){              
+     return moistureValue = analogRead(moistureSensor); // Read the moisture leve        
     }
-    void updateSetpoint(unsigned int newSetpoint) {
+
+    void updateSetpoint( int newSetpoint) {
         setpoint += newSetpoint;
     }
 
-    int setpoint() {
+    uint8_t setpoint() {
         return setpoint;
     }  
       
-    int constrainedValu(){
-        return lastMoistureValue = map(moistureValue ,drySoil ,wetSoil ,0 ,100); // map the range in percantage
+    uint8_t constrainedValu(){
+        return constrainedMoistureValue = map(moistureValue ,drySoil ,wetSoil ,0 ,100); // map the range in percantage
     }
       
     unsigned long checkInterval() {
@@ -172,9 +171,11 @@ Soil::analogPin(uint8_t _pin) {
   pinMode(pin, INPUT_PULLUP);
 }
 
+//instances
 Soil mySoil;
 const uint8_t pin_A0 = 14;  //A0 
-analogPin mistureSensor(pin_A0);
+analogPin moistureSensor(pin_A0);
+
 //end of class Soil
 
 //global variables
