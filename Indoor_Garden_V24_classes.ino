@@ -148,8 +148,8 @@ public:
      return moistureValue = analogRead(moistureSensor); // Read the moisture leve        
     }
 
-    void updateSetpoint( int newSetpoint) {
-        setpoint += newSetpoint;
+    void updateSetpoint( unit8_t adjustment) {
+        setpoint += adjustment;
     }
 
     uint8_t setpoint() {
