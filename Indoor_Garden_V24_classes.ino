@@ -41,7 +41,7 @@
 // constant variables
 #define FLOW_SENSOR_PIN 2    /*hardware interrupt pin*/
 #define relayPin 9           /* Pump is contrpolled via PUMP+ on PCB*/
-#define moisturePin A0        /* Capacitive moisture sensor is connected to SOIL on PCB*/
+//#define pin_A0 A0        /* Capacitive moisture sensor is connected to SOIL on PCB*/
 #define drySoil 1023         /* dry soil moisture value from calibration*/
 #define wetSoil 250         /* wet soil moisture value from calibration*/
 
@@ -83,12 +83,6 @@ typedef struct context{
     volatile bool navigateUpFlag = false;
 };context MENU;
 
-/*
-Page page = MAIN_MENU;   
-Page oldPage = SUB_MENU;
-Menu_item menuitem = SETPOINT; 
-Menu_item lastMenuItem;
-*/
 
 //Rotary encoder variables
 ClickEncoder *encoder;
@@ -119,14 +113,7 @@ typedef struct controller {
     unsigned long lastTimeChecked = 0;
 };controller PID;
 
-//Soil Moisture sensor 
-/*
-typedef struct soil {
-      int setpoint = 70;  // Desired soil moisture level
-    unsigned int lastMoistureValue = 0; // Stores the last measured soil moisture value
-    const unsigned long checkInterval = 120000; // Interval to check moisture 2 minute)
-};soil  MOISTURE;
-*/
+
  
 // Flow sensor 
 typedef struct irrigation {
@@ -136,9 +123,7 @@ typedef struct irrigation {
     float supplyLimit = 1.0; // 1 liter
 };irrigation WATER;
 
-
-
-using namespace std;
+//Soil Moisture sensor 
 
 class Soil {
 private:
@@ -146,50 +131,44 @@ private:
     //double fuelLevel;
     uint8_t _pin;                  //hardware pin number
     uint8_t setpoint;  // Desired soil moisture level    
-    unsigned uint16_t MoistureValue ; // Stores the last measured soil moisture value
+    unsigned uint16_t moistureValue ; // Stores the last measured soil moisture value
     const unsigned long checkInterval; // Interval to check moisture 2 min
 public:
     //Car() : speed(0), fuelLevel(100.0) {}
-    Soil() : setpoint(70), MoistureValue(0), checkInterval(120000),_pin {};
+    Soil() : setpoint(70), MoistureValue(0), checkInterval(120000), {};
 
-    moisturePin(uint8_t _pin);
+    analogPin(uint8_t _pin);
 
-    void checkMoisture(unit8_t moisturePin){              
-      MoistureValue = analogRead(moisturePin); // Read the moisture leve        
-    )
-    /*  
-    void accelerate(int amount) {
-        speed += amount;
-        fuelLevel -= amount * 0.1;
+    void checkMoisture(){              
+      moistureValue = analogRead(analogPin); // Read the moisture leve        
     }
-    */
-    void setpoint() {
-        setpoint = 70;
-    }
-    int constrainedValu(unit16_t lastMoistureValue){
-        return lastMoistureValue = map(MoistureValue ,drySoil ,wetSoil ,0 ,100); // map the range in percantage
+    void updateSetpoint(unsigned int newSetpoint) {
+        setpoint += newSetpoint;
     }
 
-    void refuel(double amount) {
-        fuelLevel += amount;
+    int setpoint() {
+        return setpoint;
+    }  
+      
+    int constrainedValu(){
+        return lastMoistureValue = map(moistureValue ,drySoil ,wetSoil ,0 ,100); // map the range in percantage
     }
-
-    void checkInterval() {
-        checkInterval = = 120000;
+      
+    void checkInterval(unsigned int newCheckInterval) {
+        checkInterval =  newCheckInterval * 1000;
     }
 };
 
-int main() {
-    Soil mySoil;
-    mySoil.moisturePin(moisturePin);
-    myCar.brake();
-    myCar.refuel(20);
-    myCar.display();
-    return 0;
+//constructor aka initialize
+Soil::analogPin(uint8_t _pin) {
+  pin = _pin;
+  pinMode(pin, INPUT_PULLUP);
 }
 
-
-
+Soil mySoil;
+const uint8_t pin_A0 = 14;  //A0 
+analogPin mistureSensor(pin_A0);
+//end of class Soil
 
 //global variables
 const byte count =10;
@@ -305,7 +284,7 @@ void loop() {
 //------------------------------------------------------------------------------
 
 void resetDefaults(){
-  MOISTURE.setpoint = 70;
+  mySoil.setpoint()=70;
   WATER.supplyLimit = 1.0;
   PID.kp = 1.97;      // Proportional gain - original = 2;
   PID.ki = 0.80;      // Integral gain - original 0.1;
@@ -454,7 +433,7 @@ float computePID(int input) {
   //    return 0;
   //}
   // Calculate the error
-  float error = MOISTURE.setpoint - input;
+  float error =  mySoil.setpoint() - input;
 
   // Proportional term
   float pTerm = PID.kp * error;
@@ -504,19 +483,19 @@ void dequeue() {
 void checkMoisture(){    
   long currentTime = millis();
   isCounting = false; //flag to not let the new values to be printed yet   
-  MOISTURE.lastMoistureValue = analogRead(moisturePin); // Read the moisture leve
+
 #ifdef DEBUG
   Serial.print("Raw Soil Moisture Level: ");
-  Serial.println(MOISTURE.lastMoistureValue);  
+  Serial.println(mySoil.checkMoisture();  
 #endif  
-  MOISTURE.lastMoistureValue = map(MOISTURE.lastMoistureValue ,drySoil ,wetSoil ,0 ,100); // map the range in percantage
-  float pidOutput = computePID(MOISTURE.lastMoistureValue); // Calculate the PID output
+ 
+  float pidOutput = computePID(mySoil.constrainedValu()); // Calculate the PID output
 #ifdef DEBUG 
   Serial.print("Soil Moisture Level: ");
-  Serial.print(MOISTURE.lastMoistureValue);  
+  Serial.print(mySoil.constrainedValu());  
   Serial.println(" %");  
   Serial.print("Setpoint: ");
-  Serial.println(MOISTURE.setpoint);     
+  Serial.println(mySoil.setpoint());     
   Serial.print("PID output in ms: ");
   Serial.println(pidOutput); 
 #endif  
@@ -537,14 +516,14 @@ void checkMoisture(){
     enqueue(calculateWaterFlow,0);  //monitor flow meter while pump is on
     isCounting = true;  //now print new data to screen     
     enqueue(stopPump, WATERPUMP.runTime); // Schedule a task to stop the pump after 30 seconds    
-    enqueue(checkMoisture, MOISTURE.checkInterval); // Re-schedule the moisture check task
+    enqueue(checkMoisture, mySoil.checkInterval()); // Re-schedule the moisture check task
   }
   else { 
     isCounting = true;  //now print new data to screen
 #ifdef DEBUG    
     Serial.println("Soil Moisture above treashold. Lets check again...in 2 min ");
 #endif    
-    enqueue(checkMoisture, MOISTURE.checkInterval); // Re-schedule the moisture check task 
+    enqueue(checkMoisture, mySoil.checkInterval());  //enter valu in seconds); // Re-schedule the moisture check task 
   }   
 }
 
@@ -610,7 +589,7 @@ void drawRefreshSubMenu(){
 void drawSubMenu(){ 
   switch(MENU.child){
     case SETPOINT:       
-      displayItemMenuPage(printChild[SETPOINT], MOISTURE.setpoint);
+      displayItemMenuPage(printChild[SETPOINT],  mySoil.setpoint());
       break;
     case FLOW:
       displayItemMenuPage(printChild[FLOW], WATER.supplyLimit);
@@ -730,7 +709,7 @@ void frameAligmentDown(){
 void valueAdjustment(){
   if(ROTARY.up){  
     if (MENU.child == SETPOINT ) {
-      MOISTURE.setpoint++;
+      mySoil.updateSetpoint(1) {
     }
     else if ( MENU.child == FLOW ) {
       WATER.supplyLimit = WATER.supplyLimit + 0.1 ;
@@ -746,7 +725,8 @@ void valueAdjustment(){
 
   if(ROTARY.down){
     if (MENU.child == SETPOINT) {
-      MOISTURE.setpoint--;
+       mySoil.updateSetpoint(-1); 
+
     }
     else if ( MENU.child == FLOW) {     
      WATER.supplyLimit = WATER.supplyLimit - 0.1 ;
