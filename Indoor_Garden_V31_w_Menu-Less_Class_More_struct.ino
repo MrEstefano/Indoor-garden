@@ -329,7 +329,6 @@ unsigned long start;
 //------------------------------------------------------------------------------
 
 void setup() {
-  Serial.begin(9600);
 #ifdef DEBUG  
   Serial.begin(9600);
 #endif  
