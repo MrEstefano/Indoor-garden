@@ -1,8 +1,8 @@
 
 /**************************************************************************************/
-/*  Name    : Indoor Garden V32 Menu Class_struct                                                 */
+/*  Name    : Indoor Garden V32 Menu Class__pointers_struct                                                 */
 /*  Author  : Stefan Zakutansky ATU.ie student                                        */
-/*  Date    : 5. 9.2023                                                              */
+/*  Date    : 7. 9.2023                                                              */
 /*  Notes   : The code operates on Queuing architecture to faciliate a "mutex" for    */
 /*            global variables. The system measures a soil moisture by capacitive    	*/
 /*            sensor. The values are computed by PID alghoritm to calculate           */
