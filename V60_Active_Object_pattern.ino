@@ -21,19 +21,57 @@ Explanation
 
 Adjustment done in RTOSConfig.h file
 
+ /*----------------------------------------------------------
 #define configTICK_RATE_HZ   ( ( TickType_t ) 1000 )
 #define configTOTAL_HEAP_SIZE  ( ( size_t ) ( 1280 ) )
-#define configMAX_TASK_NAME_LEN             8      //default value: 16
-#define configMINIMAL_STACK_SIZE            68     //default value: 192
-#define configUSE_MUTEXES                   0      //default value: 1
-#define configUSE_RECURSIVE_MUTEXES         0      //default value:  1
-#define configUSE_COUNTING_SEMAPHORES       0      //default value:  1
-#define configTIMER_TASK_STACK_DEPTH        68     //default value:  88
-#define configTICK_TYPE_WIDTH_IN_BITS        TICK_TYPE_WIDTH_16_BITS // option TICK_TYPE_WIDTH_32_BITS   
+
+//#define configUSE_TASK_NOTIFICATIONS 1
+//#define configTASK_NOTIFICATION_ARRAY_ENTRIES 2
+
+* Delay definition - here, the user can choose which delay implementation is required.
+ * The default is to change nothing. *
+#define configUSE_PORT_DELAY                1
+
+/* And on to the things the same no matter the AVR type... *
+#define configUSE_PREEMPTION                1
+
+#define configCPU_CLOCK_HZ                  ( ( uint32_t ) F_CPU )          // This F_CPU variable set by the environment
+#define configTICK_TYPE_WIDTH_IN_BITS       TICK_TYPE_WIDTH_16_BITS
+
+#define configMAX_PRIORITIES                4
+#define configMAX_TASK_NAME_LEN             8 //16
+
+/* Set the stack depth type to be uint16_t, otherwise it defaults to StackType_t *
+#define configSTACK_DEPTH_TYPE              uint16_t
+
+#define configMINIMAL_STACK_SIZE            68 //192
+#define configCHECK_FOR_STACK_OVERFLOW      1
+#define configUSE_TRACE_FACILITY            0
+
+#define configUSE_MUTEXES                   0//1
+#define configUSE_RECURSIVE_MUTEXES         0//1
+#define configUSE_COUNTING_SEMAPHORES       0//1
+#define configUSE_TIME_SLICING              1
+
+#define configUSE_QUEUE_SETS                0
+#define configUSE_APPLICATION_TASK_TAG      0
+#define configUSE_MALLOC_FAILED_HOOK        1
+#define configQUEUE_REGISTRY_SIZE           0
+#define configSUPPORT_DYNAMIC_ALLOCATION    1
+#define configSUPPORT_STATIC_ALLOCATION     0
+
+#define configUSE_IDLE_HOOK                 1
+#define configIDLE_SHOULD_YIELD             1
+#define configUSE_TICK_HOOK                 0
+
+/* Timer definitions. *
+#define configUSE_TIMERS                    1
 #define configTIMER_TASK_PRIORITY           ( configMAX_PRIORITIES-1 )
+#define configTIMER_TASK_STACK_DEPTH        68
+#define configTIMER_QUEUE_LENGTH            10
 
  Current Compiled version at:
-Sketch uses 24334 bytes (75%) of program storage space. Maximum is 32256 bytes.
+Sketch uses 24258 bytes (75%) of program storage space. Maximum is 32256 bytes.
 Global variables use 648 bytes (31%) of dynamic memory, leaving 1400 bytes for local variables. Maximum is 2048 bytes.
 
 */
@@ -62,10 +100,6 @@ ClickEncoder *encoder;
 
 Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK, TFT_RST); 
 
-//Costants move them to ROM by static
-static const TickType_t xTimeIncrement = pdMS_TO_TICKS(6000); // Period of 12s to check the sensor
-
-//static const uint8_t relayPin = 9;
 
 SoftwareSerial mod(19, 18); // Software serial for RS485 communication
 
@@ -101,13 +135,14 @@ void Pump_AO( void *pvParameters );
 // Declare Timer Handles
 TimerHandle_t pumpTimer;
 
-// Event Queues
+// Event Queues  
 QueueHandle_t  sensorQueue, displayQueue, encoderQueue, pumpQueue;
 
    
 // the setup function runs once when you press reset or power the board
 void setup() {
-  mod.begin(4800);    // Initialize software serial communication at 4800 baud rate
+  // Initialize software serial communication at 4800 baud rate
+  mod.begin(4800);    
  
   //Print once - this does not change
   tft.initR(INITR_BLACKTAB);    
@@ -135,16 +170,16 @@ void setup() {
   tft.setCursor(15, 70);
   tft.print(F("Value     "));  
   
-   // Create event queues
+  // Create event queues
   sensorQueue = xQueueCreate(5, sizeof(SensorData));
   displayQueue = xQueueCreate(5, sizeof(Event));
-  encoderQueue = xQueueCreate(5, sizeof(EncoderData));
-  pumpQueue = xQueueCreate(5, sizeof(Event));
+  encoderQueue = xQueueCreate(5, sizeof(Event));
+  pumpQueue = xQueueCreate(20, sizeof(Event));
 
   //Create timers for pump 1
   pumpTimer = xTimerCreate("PumpTimer", pdMS_TO_TICKS(1), pdFALSE, (void *)1, pumpTimerCallback1);
  
-  encoder = new ClickEncoder(ENCODER_CLK, ENCODER_DT, ENCODER_SW, 2, false); // (uint8_t A, uint8_t B, uint8_t BTN = -1, uint8_t stepsPerNotch = 1, bool active = LOW);
+  encoder = new ClickEncoder(ENCODER_CLK, ENCODER_DT, ENCODER_SW, 1, false); // (uint8_t A, uint8_t B, uint8_t BTN = -1, uint8_t stepsPerNotch = 1, bool active = LOW);
   //priority 3 same as timer
 
   //Encoder Input Event: EncoderAO reads the encoder’s value and sends the target setpoint updates to PumpControlAO.
@@ -248,27 +283,28 @@ void delayMs(uint32_t ms) {
 /*----------------------------------------------------------------------------------------------------------*/
 void Sens_AO(void *pvParameters) {
   (void*) pvParameters;
-  TickType_t xLastWakeTime = xTaskGetTickCount(); // 1 second timeout
-  const static byte soilSensorRequest[] = {0x01, 0x03, 0x00, 0x00, 0x00, 0x02, 0xC4, 0x0B};
-  TickType_t timeout = xTaskGetTickCount() + pdMS_TO_TICKS(1000); // 1 second timeout  
+  //TickType_t xLastWakeTime = xTaskGetTickCount(); // 1 second timeout
+  const byte soilSensorRequest[] = {0x01, 0x03, 0x00, 0x00, 0x00, 0x02, 0xC4, 0x0B};
   byte soilSensorResponse[9];
-  byte index = 0;
-  Event sensorEvent;
   while (1) {         
     // Read sensor data
     //poll is used instead of vTaskdelay() - no need to give CPU others, otherwise transmition will be broken
     //send request to RS485 device
     mod.write(soilSensorRequest, sizeof(soilSensorRequest));
     //poll untoil software serial buffer is full of 9 bytes
+    TickType_t timeout = xTaskGetTickCount() + pdMS_TO_TICKS(1000); // 1 second timeout 
     while (mod.available() < 9 && xTaskGetTickCount() < timeout) {
       delayMs(1);   //poll untoil software serial buffer is full of 9 bytes
     }
     //when full of 9 bytes
+    
+    byte index = 0;
     if (mod.available() >= 9) {
+      
       //Extract elements from string to individual indexex
       while (mod.available() && index < 9) {
         soilSensorResponse[index++] = mod.read();
-        delayMs(1);  //poll to give the serial port a chance to store byte values in each index
+        delayMs(2);  //poll to give the serial port a chance to store byte values in each index
       }
       // Extract the moisture and temperature values
       sensorData.moisture = int(soilSensorResponse[3] << 8 | soilSensorResponse[4]) / 10;
@@ -277,19 +313,19 @@ void Sens_AO(void *pvParameters) {
     }
 
     // Create sensor event
+    Event sensorEvent;
     sensorEvent.type = EVENT_SENSOR_UPDATE;
     sensorEvent.data = &sensorData;
 
     // Send event to display and pump control
     xQueueSend(displayQueue, &sensorEvent,(TickType_t) 0);   //send the values with the queue to disply task Imedietly
     xQueueSend(pumpQueue, &sensorEvent, (TickType_t) 0);
-    vTaskDelayUntil(&xLastWakeTime, xTimeIncrement);  
+    vTaskDelay(pdMS_TO_TICKS(6000)); // 100 ms delay for smoother updates  
   }
 }   
 
 void Enc_AO(void *pvParameters) {
   (void*) pvParameters;
-  Event encoderEvent;
   encoder->setAccelerationEnabled(true);
   int value;
   int last = encoder->getValue();
@@ -316,6 +352,7 @@ void Enc_AO(void *pvParameters) {
         last = value; 
       }        
     }
+    Event encoderEvent;
     encoderEvent.type = EVENT_ENCODER_UPDATE;
     encoderEvent.data = &encoderData;
     xQueueSend(displayQueue, &encoderEvent, (TickType_t) 0);  
@@ -361,7 +398,7 @@ void TFT_AO(void *pvParameters) {
       }
     } 
         
-    vTaskDelay(pdMS_TO_TICKS(120)); // 120 ms delay for smoother updates
+    vTaskDelay(pdMS_TO_TICKS(80)); // 120 ms delay for smoother updates
   }
 }
 
@@ -372,13 +409,13 @@ void Pump_AO(void *pvParameters) {
   (void*) pvParameters;
   DDRB |= 0x02; 		// XXXXXXXX | 00000010 = XX1XXXXX Set PB1 aka pin (9) as output, ignore the rest
   PORTB |= (1 << 1);   // Initialize pump to be off (HIGH means off for active low)
-  float pidOutput = 0;
+  //float pidOutput = 0;
   int newSetpoint = 60;
   while (1) {
     if (xQueueReceive(pumpQueue, &event, portMAX_DELAY) == pdTRUE) {
       if (event.type == EVENT_SENSOR_UPDATE) {
         SensorData *data = (SensorData*) event.data;
-        pidOutput = computePID(data->moisture,  newSetpoint);
+        float pidOutput = computePID(data->moisture,  newSetpoint);
         if (pidOutput > 0){               
           PORTB &= ~(1 << 1); 
           // Set timer duration to the PID runtime output
@@ -392,9 +429,8 @@ void Pump_AO(void *pvParameters) {
         newSetpoint = data->setpoint;
       }
     }
-  vTaskDelay(pdMS_TO_TICKS(150)); // 100 ms delay for smoother updates
+  vTaskDelay(pdMS_TO_TICKS(60)); // 100 ms delay for smoother updates
   }
 }
 
 void loop(){ /*Empty. Things are done in Tasks*/ }
-
