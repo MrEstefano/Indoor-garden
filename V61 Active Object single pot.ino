@@ -2,7 +2,7 @@
 /********************** Event-driven Active Object (AO) pattern with FreeRTOS *********************************/
 /**************************************************************************************************************/
 /*************************************************************************************************************/
-/*                     Name    : Indoor Garden V61 Active Object FREE RTOS                                   */
+/*                     Name    : Indoor Garden V61 Active Object single pot                                                */
 /*                     Author  : Stefan Zakutansky ATU.ie student                                            */
 /*                     Date    : 5. 11.2024                                                                  */
 /*                     Notes   : The code operates on Active object architecture to faciliating              */
