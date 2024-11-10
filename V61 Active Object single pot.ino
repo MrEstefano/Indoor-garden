@@ -37,8 +37,6 @@ Explanation
 
 #include <Arduino_FreeRTOS.h>
 #include <timers.h>
-#include <task.h>
-#include <portable.h>
 #include <queue.h>
 #include <SoftwareSerial.h>
 #include <Adafruit_ST7735.h>
@@ -70,7 +68,7 @@ typedef enum {
     EVENT_SENSOR_UPDATE,
     EVENT_ENCODER_UPDATE,
     EVENT_PUMP_CONTROL,
-    EVENT_DISPLAY_UPDATE 
+    EVENT_DISPLAY_UPDATE
 } EventType;
 
 // Active Object event and data carrier
@@ -107,6 +105,10 @@ QueueHandle_t    sensorQueue, displayQueue, pumpQueue;
 // the setup function runs once when you press reset or power the board
 void setup() {
   // Initialize software serial communication at 4800 baud rate
+    // Set PB1 aka pin (9) as output, ignore the rest (for fast execution and memory saving, using C)
+  DDRB |= 0x02; 		   // XXXXXXXX | 00000010 = XXXXXX1X 
+  PORTB |= (1 << 1);   // Initialize pump to be off (HIGH means off for active low)
+
   mod.begin(4800);    
  
   //Print once - this does not change
@@ -136,10 +138,10 @@ void setup() {
   tft.print(F("Value     "));  
   
   // Create event queues
-  sensorQueue = xQueueCreate(10, sizeof(SensorData));
-  displayQueue = xQueueCreate(16, sizeof(Event));
+  sensorQueue = xQueueCreate(5, sizeof(SensorData));
+  displayQueue = xQueueCreate(15, sizeof(Event));
   //encoderQueue = xQueueCreate(15, sizeof(Event));
-  pumpQueue = xQueueCreate(10, sizeof(Event));
+  pumpQueue = xQueueCreate(15, sizeof(Event));
 
   // Single shot Timer - this timer is called by function, passing variable time interval
   pumpTimer = xTimerCreate("PumpTimer", pdMS_TO_TICKS(1), pdFALSE, (void *)1, pumpTimerCallback1);
@@ -147,7 +149,7 @@ void setup() {
   // Repetative Timer- the 1000 will be overwritten after first call
   sensorTimer = xTimerCreate("sensortimer", pdMS_TO_TICKS(15000), pdTRUE, (void *)1, sensorTimerCallback);  
 
-  encoderTimer = xTimerCreate("encoderTimer", pdMS_TO_TICKS(160), pdTRUE, (void *)1, encoderTimerCallback);  
+  encoderTimer = xTimerCreate("encoderTimer", pdMS_TO_TICKS(150), pdTRUE, (void *)1, encoderTimerCallback);  
   // Initialize Encoder Object
   encoder = new ClickEncoder(ENCODER_CLK, ENCODER_DT, ENCODER_SW, 1, false); // (uint8_t A, uint8_t B, uint8_t BTN = -1, uint8_t stepsPerNotch = 1, bool active = LOW);
 
@@ -157,7 +159,7 @@ void setup() {
   ,  "Check encoder"  // A name just for humans
   ,  68 // This stack size 
   ,  NULL //Parameters for the task
-  ,  3//1  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
+  ,  4  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
   ,  NULL//&xTaskEnc 
   ); //Task Handle
 
@@ -167,7 +169,7 @@ void setup() {
     ,  "TFT Screen"  // A name just for humans
     ,  148 // This stack size 
     ,  NULL //Parameters for the task
-    ,  3//2 // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
+    ,  3 // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
     ,  NULL//&xTaskTFT 
     ); //Task Handle
 
@@ -177,7 +179,7 @@ void setup() {
     ,  "Sens the soil moisture"  // A name just for humans
     ,  108  // This stack size 
     ,  NULL //Parameters for the task
-    ,  3  // Priority, with 3 being the highest, and 0 being the lowest.
+    ,  4  // Priority, with 3 being the highest, and 0 being the lowest.
     ,  NULL//N&xTaskSens  // Task handle 
     ); //Task Handle
 
@@ -185,9 +187,9 @@ void setup() {
   xTaskCreate(
     Pump_AO
     ,  "TaskreadSoilMoireONE"  // A name just for humans
-    ,  118  // This stack size 
+    ,  108  // This stack size 
     ,  NULL //Parameters for the task
-    ,  3//4    // Priority, with 3 being the highest, and 0 being the lowest.
+    ,  3    // Priority, with 3 being the highest, and 0 being the lowest.
     ,  NULL//&xTaskPump  // Task handle 
     ); //Task Handle
   
@@ -215,6 +217,7 @@ float computePID(int input,  int setpoint){
   static int lastError;
   static float integral;
   static TickType_t lastTimeChecked = xTaskGetTickCount(); // Initialize with current tick count 
+
   TickType_t currentTime = xTaskGetTickCount();  
   float timeChange = (float)(currentTime - lastTimeChecked) / 1000; // Convert to seconds
 
@@ -246,8 +249,8 @@ float computePID(int input,  int setpoint){
 
 // Callback function for Pump 1
 void pumpTimerCallback1(TimerHandle_t xTimer) {
-  // Turn off the pump
-  PORTB |= (1 << 1);
+  // Turn off the pump by setting the bit high (active low)
+  PORTB |= (1 << 1);  
 }
 
 // Callback function is periodic every 6 seconds
@@ -263,8 +266,8 @@ void encoderTimerCallback(TimerHandle_t xTimer) {
       // Create the event
     Event encoderEvent = {EVENT_ENCODER_UPDATE,&encoderData};
     // Send the Event carrying the data to update the screen and new setpoint variable in pump task
-    //xQueueSend(displayQueue, &encoderEvent, (TickType_t) 0);  
-    xQueueSend(pumpQueue, &encoderEvent, (TickType_t) 0);  
+    xQueueSend(displayQueue, &encoderEvent, (TickType_t) 0);  
+    xQueueSend(pumpQueue, &encoderEvent, (TickType_t) 0); 
 }
 
 
@@ -289,7 +292,7 @@ void Sens_AO(void *pvParameters) {
     
     // poll is used instead of vTaskdelay() - Intentionaly the CPU is not being released, 
     // otherwise transmition will be broken
-
+  
     // send request to RS485 device
     mod.write(soilSensorRequest, sizeof(soilSensorRequest));
     //poll untoil software serial buffer is full of 9 bytes
@@ -298,35 +301,40 @@ void Sens_AO(void *pvParameters) {
     TickType_t timeout = xTaskGetTickCount() + pdMS_TO_TICKS(1000); 
     // Stay here until the buffer is filled up
     while (mod.available() < 9 && xTaskGetTickCount() < timeout) {
+      //vTaskDelay(pdMS_TO_TICKS(1)); 
       delayMs(1);   //poll untoil software serial buffer is full of 9 bytes
     }
     // When buffer is already full, store the data to an array
     if (mod.available() >= 9) {
       for (byte i = 0; i < 9; i++) {
+        //vTaskDelay(pdMS_TO_TICKS(1)); 
         delayMs(1);  //poll to give the serial port a chance to store byte values for each index
         soilSensorResponse[i] = mod.read();
       }
     // Extract the moisturefrom array
     sensorData.moisture = int(soilSensorResponse[3] << 8 | soilSensorResponse[4]) / 10;
 
-    // limit the moisture to range 0 - 100
-    if (sensorData.moisture > 100){ sensorData.moisture = 100;}  
-    else if(sensorData.moisture < 0){ sensorData.moisture = 0;}
+
 
     // Extract the temperature from array
     int temperatureRaw = int(soilSensorResponse[5] << 8 | soilSensorResponse[6]);
     sensorData.temperature = (temperatureRaw > 0x7FFF) ? -(0x10000 - temperatureRaw) / 10 : temperatureRaw / 10;
-
-    // create event
+            // limit the moisture to range 0 - 100
+    if (sensorData.moisture > 100){ sensorData.moisture = 100;}  
+    else if(sensorData.moisture < 0){ sensorData.moisture = 0;}
+     // create event
     Event sensorEvent = {EVENT_SENSOR_UPDATE, &sensorData};
+ 
     // Send the event to disply task Imedietly
-    xQueueSend(displayQueue, &sensorEvent,(TickType_t) 0);    
+    xQueueSend(displayQueue, &sensorEvent,(TickType_t) 0);  
+   
     }
     else{
       //otherwise do nothing
     }  
+  
     // 500 ms delay for smoother updates  
-    vTaskDelay(pdMS_TO_TICKS(250)); 
+    vTaskDelay(pdMS_TO_TICKS(450)); 
   }
 }   
 
@@ -337,26 +345,24 @@ void Sens_AO(void *pvParameters) {
 void Enc_AO(void *pvParameters) {
   (void*) pvParameters;
   encoder->setAccelerationEnabled(true);
-  int value;
-  int last = encoder->getValue();
-  bool last_Button_eState = false;
+  int value ;
+  int last = encoder->getValue()  ; 
   while (1) {   
     // Update encoder state
     encoder->service(); 
     // Check button press to toggle adjust mode 
     ClickEncoder::Button buttonState = encoder->getButton();
-    if (buttonState == ClickEncoder::Clicked && !last_Button_eState ) {    
+    if (buttonState == ClickEncoder::Clicked  ) {    
       encoderData.adjustMode = !encoderData.adjustMode; 
     }
-    last_Button_eState = (buttonState == ClickEncoder::Clicked); 
-    // Adjust PID.setpoint only when in adjust mode
+    
     if (encoderData.adjustMode) {    
-      value += encoder->getValue();  
-      if (value != last ){
-        if ( value > last) {    
+      value += encoder->getValue(); 
+      if (value != last ){      
+        if ( value/2 > last/2) {    
           encoderData.setpoint -= 1;
         }  
-        else if (value < last)  {
+        else if (value/2 < last/2)  {
           encoderData.setpoint += 1; 
         }
         // limit the setpoint to range 0 - 100  
@@ -365,10 +371,9 @@ void Enc_AO(void *pvParameters) {
         last = value; 
       }        
     }
-      Event encoderEvent = {EVENT_ENCODER_UPDATE,&encoderData};
-    // Send the Event carrying the data to update the screen and new setpoint variable in pump task
-    xQueueSend(displayQueue, &encoderEvent, (TickType_t) 0);  
-    //xQueueSend(pumpQueue, &encoderEvent, (TickType_t) 0);  
+
+    // encoder timer triggers posting the event to display and Pump tasks
+
     // 10 ms delay for responsivenes
     vTaskDelay(pdMS_TO_TICKS(10)); 
   }
@@ -424,13 +429,13 @@ void TFT_AO(void *pvParameters) {
         tft.setTextSize(2);
         taskENTER_CRITICAL(); // Disable interrupts here if needed
         tft.setCursor(105, 0);
-        int num = data->moisture;
-        if (num < 10) {
+        int num_2 = data->moisture;
+        if (num_2 < 10) {
             tft.print("  ");  // Add two spaces for single-digit numbers
-        } else if (num < 100) {
+        } else if (num_2 < 100) {
             tft.print(" ");   // Add one space for two-digit numbers
         }
-        tft.print(num);       // Print the number itself
+        tft.print(num_2);       // Print the number itself
         //tft.print(data->moisture);
         tft.setCursor(105, 20);
         int digit = data->temperature;
@@ -446,7 +451,7 @@ void TFT_AO(void *pvParameters) {
     } 
     //taskYIELD();
     //
-    vTaskDelay(pdMS_TO_TICKS(80)); // 120 ms delay for smoother updates
+    vTaskDelay(pdMS_TO_TICKS(150)); // 120 ms delay for smoother updates
   }
 }
 
@@ -454,15 +459,9 @@ void TFT_AO(void *pvParameters) {
 
 // Task function using Mutex
 void Pump_AO(void *pvParameters) {
-  (void*) pvParameters;
-  // Set PB1 aka pin (9) as output, ignore the rest (for fast execution and memory saving, using C)
-  DDRB |= 0x02; 		   // XXXXXXXX | 00000010 = XXXXXX1X 
-  PORTB |= (1 << 1);   // Initialize pump to be off (HIGH means off for active low)
-  // After initializing period of 1 second, chenge to 30 000 which works out 2 min according to stopwatched revision
-  //xTimerChangePeriod(sensorTimer, pdMS_TO_TICKS(3000), 0);
-  int newSetpoint = 60;   
+  (void*) pvParameters;    
   while (1) {
-    
+    int newSetpoint = encoderData.setpoint;
     if (xQueueReceive(sensorQueue, &event, portMAX_DELAY) == pdTRUE) {
       // Check if incoming event is valid 
       configASSERT(event != (Event)0);
@@ -488,8 +487,7 @@ void Pump_AO(void *pvParameters) {
         newSetpoint = data->setpoint;
       }
     }
-    //taskYIELD();   
-  vTaskDelay(pdMS_TO_TICKS(80)); // 100 ms delay for smoother updates
+  vTaskDelay(pdMS_TO_TICKS(120)); // 100 ms delay for smoother updates
   }
 }
 
@@ -501,7 +499,7 @@ Adjustment done in RTOSConfig.h file
 
  
 #define configTICK_RATE_HZ   ( ( TickType_t ) 1000 )
-#define configTOTAL_HEAP_SIZE  ( ( size_t ) ( 1280   ) )
+//#define configTOTAL_HEAP_SIZE  ( ( size_t ) ( 1280   ) )
 
 //#define configUSE_TASK_NOTIFICATIONS 1
 //#define configTASK_NOTIFICATION_ARRAY_ENTRIES 2
