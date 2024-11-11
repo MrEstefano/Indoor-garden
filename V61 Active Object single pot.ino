@@ -205,10 +205,22 @@ float computePID(int input,  int setpoint){
   // Initialize your PID controller, menu, etc.
   // You can also set these values here or keep them in the struct constructor
   /*
-  static const float kp = 2.0;
-  static const float ki = 0.1;
-  static const float kd = 1.1;
-    */
+  static const float kp = 2.0;  //2
+  static const float ki = 0.1;  // 0.05
+  static const float kd = 1.1; // 0
+  kP = 2,
+  kI =0.05 
+  kD = 0 
+
+  kP = 1.8,
+  kI = 0.9 
+  kD = 1.28
+
+
+  kP = 1.28,
+  kI = 0.54 
+  kD = 0.61
+  */
   // Tuned PID values
   static const float kp = 1.97;
   static const float ki = 0.80;
@@ -228,7 +240,8 @@ float computePID(int input,  int setpoint){
   float pTerm = kp * error;
 
   // Integral term
-  integral += error * timeChange;
+  //integral += error * timeChange;
+  integral += (error * timeChange) * (1.0 - 0.5 * abs(error) / setpoint);  
   if (integral > 1000) {integral = 1000;}  // limit the Integral to prevent creeping up
   else if (integral < -1000) {integral = -1000;}
   float iTerm = ki * integral;
