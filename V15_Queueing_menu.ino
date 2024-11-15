@@ -1,5 +1,5 @@
 /**************************************************************************************/
-/*  Name    : Indoor Garden V12                                                       */
+/*  Name    : Indoor Garden V15                                                       */
 /*  Author  : Stefan Zakutansky ATU.ie student                                        */
 /*  Date    : 25. 8.2023                                                              */
 /*  Notes   : The code operates on Queuing architecture to faciliate a "mutex" for    */
