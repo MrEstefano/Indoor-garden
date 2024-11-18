@@ -2,9 +2,9 @@
 /********************** Event-driven Active Object (AO) pattern with FreeRTOS *********************************/
 /**************************************************************************************************************/
 /*************************************************************************************************************/
-/*                     Name    : Indoor Garden V65                                                   */
+/*                     Name    : Indoor Garden V63                                                   */
 /*                     Author  : Stefan Zakutansky ATU.ie student                                            */
-/*                     Date    : 5. 11.2024                                                                */
+/*                     Date    : 18. 11.2024                                                                */
 /*                     Notes   : The code operates on Active object architecture to faciliating              */
 /*                               Queues feature of RTOS. The system measures a soil moisture RS485           */
 /*                               sensor. The values are computed by PID alghoritm to calculate               */
