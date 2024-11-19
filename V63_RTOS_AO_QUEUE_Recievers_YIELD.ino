@@ -238,9 +238,8 @@ float computePID(int input,  int setpoint){
 
   // Integral term
   integral += error * timeChange;
-  //integral += (error * timeChange) * (1.0 - 0.5 * abs(error) / setpoint);  
-  //if (integral > 1000) {integral = 1000;}  // limit the Integral to prevent creeping up
-  //else if (integral < -1000) {integral = -1000;}
+
+  // calculate iTerm  
   float iTerm = ki * integral;
 
   // Derivative term
