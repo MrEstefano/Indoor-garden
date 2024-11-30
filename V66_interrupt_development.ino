@@ -2,9 +2,9 @@
 /********************** Event-driven Active Object (AO) pattern with FreeRTOS *********************************/
 /**************************************************************************************************************/
 /*************************************************************************************************************/
-/*                     Name    : Indoor Garden V63                                                           */
+/*                     Name    : Indoor Garden V66                                                           */
 /*                     Author  : Stefan Zakutansky ATU.ie student                                            */
-/*                     Date    : 19. 11.2024                                                                 */
+/*                     Date    : 30. 11.2024                                                                 */
 /*                     Notes   : The code architecture accomodates an Active object pattern faciliating      */
 /*                               RTOS features, likes, Queues, Timers, Schedulling. The Event generator task */
 /*                               Sens_AO measures a soil moisture via sensor with RS485 interface, and       */
@@ -51,7 +51,7 @@ Explanation
 //#include <AltSoftSerial.h>
 #include <SoftwareSerial.h>
 #include <Adafruit_ST7735.h>
-//#include <ClickEncoder.h>
+//#include <PinChangeInt.h>
 #include <PinChangeInterrupt.h>
 
 //#define PCINT_USE_PORT2 false
@@ -122,6 +122,8 @@ QueueHandle_t  sensorQueue, displayQueue, pumpQueue;
 volatile bool rotaryEncoder = false;
 static TaskHandle_t xTaskToNotify = NULL;  
 
+TaskHandle_t xHandle = NULL;
+
 // Shared variable for adjust mode
 volatile bool adjustModeFlag = false;
 // the setup function runs once when you press reset or power the board
@@ -187,7 +189,7 @@ void setup() {
   ,  50     // This stack size 
   ,  NULL   // Parameters for the task
   ,  3        // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
-  ,  NULL   // Task Handle
+  ,  &xHandle   // Task Handle
   ); 
 
   //Display Event: DisplayAO updates the display based on new sensor data.
@@ -229,10 +231,7 @@ void setup() {
 uint8_t checkRotaryEncoder(){
     // Reset the flag that brought us here (from ISR)
     //rotaryEncoder = false;
-        /* At this point xTaskToNotify should be NULL as no transmission is in  
-       progress. A mutex can be used to guard access to the peripheral if  
-       necessary. */  
- 
+        
 
     static uint8_t lrmem = 3;
     static int lrsum = 0;
@@ -338,18 +337,8 @@ void sensorTimerCallback(TimerHandle_t xTimer) {
 
 
 void rotary_ISR(){
-  rotaryEncoder = true;
- 
 
-  // Yield to a higher priority task if necessary
-  portYIELD_FROM_ISR();
-}
-
-// ISR for the rotary encoder button press
-void rotaryPushButton_ISR() {
-
-
-
+    
    BaseType_t xHigherPriorityTaskWoken = pdFALSE;  
 
     /* Store the handle of the calling task. */  
@@ -363,11 +352,28 @@ void rotaryPushButton_ISR() {
 
     /* There are no transmissions in progress, so no tasks to notify. */  
   
-  xTaskToNotify != xTaskToNotify;
+  xTaskToNotify = NULL;
       //encoderData.adjustMode = !encoderData.adjustMode;   
+
 
   // Yield to a higher priority task if necessary
   portYIELD_FROM_ISR();
+}
+
+// ISR for the rotary encoder button press
+void rotaryPushButton_ISR() {
+    /* We have not woken a task at the start of the ISR. */
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;    
+
+    encoderData.adjustMode = !encoderData.adjustMode;
+    /* The transmission ended as expected. */ 
+    Event encoderEvent = {EVENT_ENCODER_UPDATE, &encoderData};
+
+    // Send the event to disply task Imedietly at 400ms rate
+    xQueueSendFromISR(displayQueue, &encoderData,&xHigherPriorityTaskWoken );  
+
+    // Yield to a higher priority task if necessary
+    portYIELD_FROM_ISR();
 }
 
 // Polling helper function
@@ -442,63 +448,45 @@ void Enc_AO(void *pvParameters) {
   // send Even every 100 milliseconds (readinc encoder is 10x faster, no need to overload the event stream)
   xQueueSend(displayQueue, &encoderEvent, portMAX_DELAY);  
   uint32_t ulNotificationValue;  
-  const TickType_t xMaxBlockTime = portMAX_DELAY;//pdMS_TO_TICKS( 200 );  
  
   while (1) {   
+    /* Wait for the transmission to complete for ever. */  
+    ulNotificationValue = ulTaskNotifyTakeIndexed( 0, pdFALSE, (TickType_t)portMAX_DELAY );  
 
+    if( ulNotificationValue == 1 && encoderData.adjustMode == 1)   {  
+        /* Start the transmission by calling the function shown above. */  
+        
+        // Get the movement (if valid)
+        uint8_t rotationValue = checkRotaryEncoder();
 
-     
+        // If valid movement, do something
+        if (rotationValue != 0){
+            encoderData.setpoint += rotationValue * 5;
+            if (encoderData.setpoint > 100){ encoderData.setpoint = 100;}  
+            else if(encoderData.setpoint < 0){ encoderData.setpoint = 0;} 
 
-        /* Wait for the transmission to complete. */  
-        ulNotificationValue = ulTaskNotifyTakeIndexed( 0, pdFALSE, xMaxBlockTime );  
-
-        if( ulNotificationValue == 1 )   {  
-            /* Start the transmission by calling the function shown above. */  
-             if (rotaryEncoder){
-                // Get the movement (if valid)
-                int8_t rotationValue = checkRotaryEncoder();
-
-                // If valid movement, do something
-                if (rotationValue != 0){
-                  encoderData.setpoint += rotationValue * 5;
-                  if (encoderData.setpoint > 100){ encoderData.setpoint = 100;}  
-                  else if(encoderData.setpoint < 0){ encoderData.setpoint = 0;} 
-                  Event encoderEvent = {EVENT_ENCODER_UPDATE, &encoderData};
-
-                  // Send the event to disply task Imedietly at 400ms rate
-                  xQueueSend(displayQueue, &encoderData,(TickType_t)0);  
-                    
-                }
-              }
- 
-            
-             /* The transmission ended as expected. */ 
-              Event encoderEvent = {EVENT_ENCODER_UPDATE, &encoderData};
+            Event encoderEvent = {EVENT_ENCODER_UPDATE, &encoderData};
 
             // Send the event to disply task Imedietly at 400ms rate
-              xQueueSend(displayQueue, &encoderData,(TickType_t)0);  
- 
+            xQueueSend(displayQueue, &encoderData,(TickType_t)0);  
+            /* At this point xTaskToNotify should be NULL as no transmission is in  
+            progress. A mutex can be used to guard access to the peripheral if  
+            necessary. */
+            configASSERT( xTaskToNotify == NULL );  
+
+            /* Store the handle of the calling task. */  
+            xTaskToNotify = xTaskGetCurrentTaskHandle();  
             
-        }  
-        else  
-        {  
-            /* The call to ulTaskNotifyTake() timed out. */  
-        }  
+        }
 
-     
+    }  
+    else {  
+        /* The call to ulTaskNotifyTake() timed out. */  
+    }  
 
-     
-
-    /*
-    ClickEncoder::Button buttonState = encoder->getButton();
-    if (buttonState == ClickEncoder::Clicked ) {    
-      encoderData.adjustMode = !encoderData.adjustMode; 
-
-    }   
-          */   
     // 3 ms delay for responsivenes
-    vTaskDelay(pdMS_TO_TICKS(3)); 
-    //taskYIELD(); //Give CPU if no queue received
+    //vTaskDelay(pdMS_TO_TICKS(3)); 
+    taskYIELD(); //Give CPU if no queue received
   }
 }
 
