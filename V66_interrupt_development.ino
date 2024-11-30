@@ -119,10 +119,10 @@ TimerHandle_t sensorTimer, pumpTimer;
 QueueHandle_t  sensorQueue, displayQueue, pumpQueue;
 
 // Flag from interrupt routine (moved=true)
-volatile bool rotaryEncoder = false;
+// bool rotaryEncoder = false;
 static TaskHandle_t xTaskToNotify = NULL;  
 
-TaskHandle_t xHandle = NULL;
+TaskHandle_t xEncoderHandle = NULL;
 
 // Shared variable for adjust mode
 volatile bool adjustModeFlag = false;
@@ -189,7 +189,7 @@ void setup() {
   ,  50     // This stack size 
   ,  NULL   // Parameters for the task
   ,  3        // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
-  ,  &xHandle   // Task Handle
+  ,  &xEncoderHandle   // Task Handle
   ); 
 
   //Display Event: DisplayAO updates the display based on new sensor data.
@@ -338,25 +338,13 @@ void sensorTimerCallback(TimerHandle_t xTimer) {
 
 void rotary_ISR(){
 
-    
    BaseType_t xHigherPriorityTaskWoken = pdFALSE;  
 
-    /* Store the handle of the calling task. */  
-    xTaskToNotify = xTaskGetCurrentTaskHandle();  
-    /* At this point xTaskToNotify should not be NULL as a transmission was  
-       in progress. */  
-  configASSERT( xTaskToNotify != NULL );  
-
     /* Notify the task that the transmission is complete. */  
-  vTaskNotifyGiveIndexedFromISR( xTaskToNotify, 0, &xHigherPriorityTaskWoken );  
+  //vTaskNotifyGiveIndexedFromISR( xTaskToNotify, 0, &xHigherPriorityTaskWoken );  
+  xTaskNotifyFromISR( xEncoderHandle,0,eSetBits,&xHigherPriorityTaskWoken);
 
-    /* There are no transmissions in progress, so no tasks to notify. */  
-  
-  xTaskToNotify = NULL;
-      //encoderData.adjustMode = !encoderData.adjustMode;   
-
-
-  // Yield to a higher priority task if necessary
+// Yield to a higher priority task if necessary
   portYIELD_FROM_ISR();
 }
 
@@ -451,9 +439,16 @@ void Enc_AO(void *pvParameters) {
  
   while (1) {   
     /* Wait for the transmission to complete for ever. */  
-    ulNotificationValue = ulTaskNotifyTakeIndexed( 0, pdFALSE, (TickType_t)portMAX_DELAY );  
+  
+    xTaskNotifyWaitIndexed( 0,         /* Wait for 0th notification. */
+                            0x00,      /* Don't clear any notification bits on entry. */
+                            ULONG_MAX, /* Reset the notification value to 0 on exit. */
+                            &ulNotifiedValue, /* Notified value pass out in
+                                                 ulNotifiedValue. */
+                            portMAX_DELAY );  /* Block indefinitely. */
 
-    if( ulNotificationValue == 1 && encoderData.adjustMode == 1)   {  
+    /* Process any events that have been latched in the notified value. */
+    if(  ( ulNotifiedValue & 0x01 ) != 0 && encoderData.adjustMode == 1)   {  
         /* Start the transmission by calling the function shown above. */  
         
         // Get the movement (if valid)
