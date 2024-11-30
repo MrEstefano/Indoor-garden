@@ -119,8 +119,7 @@ TimerHandle_t sensorTimer, pumpTimer;
 QueueHandle_t  sensorQueue, displayQueue, pumpQueue;
 
 // Flag from interrupt routine (moved=true)
-// bool rotaryEncoder = false;
-static TaskHandle_t xTaskToNotify = NULL;  
+// bool rotaryEncoder = false;  
 
 TaskHandle_t xEncoderHandle = NULL;
 
