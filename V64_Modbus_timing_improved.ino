@@ -256,10 +256,6 @@ void pumpTimerCallback1(TimerHandle_t xTimer) {
 
 // Timer Callback function sends event every 5 minutes
 void sensorTimerCallback(TimerHandle_t xTimer) {
-  Event encoderEvent = {EVENT_ENCODER_UPDATE, &encoderData};
-  // send Even every 100 milliseconds (readinc encoder is 10x faster, no need to overload the event stream)
-  
-  xQueueSend(pumpQueue, &encoderEvent,(TickType_t) 0);
   // Create sensor event and asigne the data from sensor to it
   Event sensorEvent = {EVENT_SENSOR_UPDATE, &sensorData};
   // Send sensor event
@@ -272,6 +268,7 @@ void encoderTimerCallback(TimerHandle_t xTimer) {
   Event encoderEvent = {EVENT_ENCODER_UPDATE, &encoderData};
   // send Even every 100 milliseconds (readinc encoder is 10x faster, no need to overload the event stream)
   xQueueSend(displayQueue, &encoderEvent, (TickType_t) 0);  
+
 }
 
 
@@ -280,6 +277,7 @@ void delayMs(uint32_t ms) {
   TickType_t start = xTaskGetTickCount();
   while ((xTaskGetTickCount() - start) < pdMS_TO_TICKS(ms)) {
     // Busy wait
+       __asm__ __volatile__("nop"); // Minimal CPU stall
   }
 }
 /*----------------------------------------------------------------------------------------------------------*/
@@ -300,35 +298,46 @@ void Sens_AO(void *pvParameters) {
     delayMs(5);
     //vTaskDelay(10);
     // have the 1 second timeout pre-calculated using RTOS timer tick 
-    TickType_t timeout = xTaskGetTickCount() + pdMS_TO_TICKS(1000); 
+    //
     // Stay here until the buffer is filled up
+      // Poll for data, but exit if timeout (1 sec)
+        TickType_t startTime = xTaskGetTickCount();
+       while (mod.available() < 9) {
+            if (xTaskGetTickCount() - startTime > pdMS_TO_TICKS(1000)) {
+                break; // Timeout reached, abort read
+            }
+            delayMs(1); // Keep task execution atomic
+        }
+      /*
+    TickType_t timeout = xTaskGetTickCount() + pdMS_TO_TICKS(1000); 
     while (mod.available() < 10 && xTaskGetTickCount() < timeout) {
       delayMs(1);   //poll untoil software serial buffer is full of 9 bytes
     }
     // When buffer is already full, store the data to an array
+      */
     if (mod.available() >= 9) {
-      for (byte i = 0; i < 10; i++) {
-        delayMs(1);
-        //delayMs(1);  //poll to give the serial port a chance to store byte values for each index
-        soilSensorResponse[i] = mod.read();
-      }
-    mod.flush();  
-    // Extract the moisturefrom array
-    sensorData.moisture = int(soilSensorResponse[3] << 8 | soilSensorResponse[4]) / 10;
-    // limit the moisture to range 0 - 100
-    if (sensorData.moisture > 100){ sensorData.moisture = 100;}  
-    else if(sensorData.moisture < 0){ sensorData.moisture = 0;}
-
-    // Extract the temperature from array
-    int temperatureRaw = int(soilSensorResponse[5] << 8 | soilSensorResponse[6]);
-    sensorData.temperature = (temperatureRaw > 0x7FFF) ? -(0x10000 - temperatureRaw) / 10 : temperatureRaw / 10;
-
-    // Create event
-    Event sensorEvent = {EVENT_SENSOR_UPDATE, &sensorData};
-
-    // Send the event to disply task Imedietly at 400ms rate
-    xQueueSend(displayQueue, &sensorEvent,portMAX_DELAY);  
-    // Second event is sent tu pump task by periodic timer every 5 min
+          for (byte i = 0; i < 9; i++) {
+            delayMs(1);
+            //delayMs(1);  //poll to give the serial port a chance to store byte values for each index
+            soilSensorResponse[i] = mod.read();
+          }
+      
+        // Extract the moisturefrom array
+        sensorData.moisture = int(soilSensorResponse[3] << 8 | soilSensorResponse[4]) / 10;
+        // limit the moisture to range 0 - 100
+        if (sensorData.moisture > 100){ sensorData.moisture = 100;}  
+        else if(sensorData.moisture < 0){ sensorData.moisture = 0;}
+    
+        // Extract the temperature from array
+        int temperatureRaw = int(soilSensorResponse[5] << 8 | soilSensorResponse[6]);
+        sensorData.temperature = (temperatureRaw > 0x7FFF) ? -(0x10000 - temperatureRaw) / 10 : temperatureRaw / 10;
+    
+        // Create event
+        Event sensorEvent = {EVENT_SENSOR_UPDATE, &sensorData};
+    
+        // Send the event to disply task Imedietly at 400ms rate
+        xQueueSend(displayQueue, &sensorEvent,0);  
+        // Second event is sent tu pump task by periodic timer every 5 min
     }
     else{
 
@@ -345,7 +354,7 @@ void Enc_AO(void *pvParameters) {
   encoder->setAccelerationEnabled(true); 
   //encoder->service();
   int value = encoder->getValue();
-  int last  = encoder->getValue(); 
+  static int last  = encoder->getValue(); 
   while (1) {   
     // Update encoder state
     encoder->service();  
@@ -353,7 +362,8 @@ void Enc_AO(void *pvParameters) {
     if (encoderData.adjustMode) {   
        //taskENTER_CRITICAL(); // Disable interrupts here if needed
       value += encoder->getValue();
-      if (value != last ){      
+      if (value != last ){   
+        
         if ( value > last) { 
           encoderData.setpoint--;   
         }  
@@ -363,7 +373,11 @@ void Enc_AO(void *pvParameters) {
         // limit the setpoint to range 0 - 100  
         if (encoderData.setpoint > 100){ encoderData.setpoint = 100;}  
         else if(encoderData.setpoint < 0){ encoderData.setpoint = 0;}
+          
         last = value; 
+        // send message only when value has changed  
+        Event encoderEvent = {EVENT_ENCODER_UPDATE, &encoderData};
+        xQueueSend(pumpQueue, &encoderEvent,(TickType_t) 0);
         // encoder timer triggers posting the event to display and Pump tasks every 100ms
         // to prevent saturation of queue at 3ms rate
       } 
@@ -372,9 +386,7 @@ void Enc_AO(void *pvParameters) {
     }
      ClickEncoder::Button buttonState = encoder->getButton();
     if (buttonState == ClickEncoder::Clicked ) {    
-      encoderData.adjustMode = !encoderData.adjustMode; 
-      Event encoderEvent = {EVENT_ENCODER_UPDATE, &encoderData};
-      xQueueSendToFront(displayQueue, &encoderEvent, (TickType_t) portMAX_DELAY);  
+      encoderData.adjustMode = !encoderData.adjustMode;        
     }      
     // 3 ms delay for responsivenes
     vTaskDelay(pdMS_TO_TICKS(5)); 
@@ -386,7 +398,7 @@ void TFT_AO(void *pvParameters) {
   (void*) pvParameters;   
   while (1) {   
     // If queueing block contains update from encoder task, then print assigned data 
-    if (xQueueReceive(displayQueue, &event, portMAX_DELAY) == pdTRUE) { 
+    if (xQueueReceive(displayQueue, &event, 0) == pdTRUE) { 
       configASSERT(event != (Event)0);
       if (event.type == EVENT_ENCODER_UPDATE ) {
         EncoderData  *data = (EncoderData*) event.data;
@@ -450,7 +462,61 @@ void TFT_AO(void *pvParameters) {
     taskYIELD(); //Give CPU if no queue received
   }
 }
+// Task becomes active when an event arrives
+void Pump_AO(void *pvParameters) {
+    (void*) pvParameters;    
 
+    // Set PB1 (pin 9) as output, active LOW
+    DDRB |= (1 << 1);  // Set pin 9 as output
+    PORTB |= (1 << 1); // Initialize pump to be OFF (HIGH means off)
+
+    int newSetpoint = 0;  // Default setpoint
+    SensorData latestSensorData = {0}; // Store latest sensor values
+
+    Event event;
+
+    while (1) {
+  // Process any pending events from both queues
+        if (xQueueReceive(sensorQueue, &event, 0) == pdTRUE || xQueueReceive(pumpQueue, &event, 0) == pdTRUE) {
+            
+            switch (event.type) {
+                case EVENT_SENSOR_UPDATE:
+                    // Update sensor data and compute PID
+                    latestSensorData = *(SensorData*) event.data;
+                    float pidOutput = computePID(latestSensorData.moisture, newSetpoint);
+
+                    if (pidOutput > 0) {  
+                        PORTB &= ~(1 << 1); // Turn pump ON
+                        xTimerChangePeriod(pumpTimer, pdMS_TO_TICKS(pidOutput), 0);  
+                        xTimerStart(pumpTimer, 0);  
+                    }
+                    break;
+
+                case EVENT_ENCODER_UPDATE:
+                    // Update setpoint from encoder
+                    newSetpoint = ((EncoderData*) event.data)->setpoint;
+                    // Immediately recompute PID using latest sensor reading
+                    float newPidOutput = computePID(latestSensorData.moisture, newSetpoint);
+
+                    if (newPidOutput > 0) {  
+                        PORTB &= ~(1 << 1); // Turn pump ON
+                        xTimerChangePeriod(pumpTimer, pdMS_TO_TICKS(newPidOutput), 0);  
+                        xTimerStart(pumpTimer, 0);  
+                    }
+                    break;
+
+                default:
+                    // Handle unexpected events (optional debugging)
+                    break;
+            }
+        }
+
+        // Yield for FreeRTOS multitasking
+        taskYIELD();
+    }
+}
+
+/*
 // Task becomes active when Event arrives
 void Pump_AO(void *pvParameters) {
   (void*) pvParameters;    
@@ -487,7 +553,7 @@ void Pump_AO(void *pvParameters) {
     taskYIELD();
   }
 }
-
+*/
 void loop(){ /*Empty. Things are done in Tasks*/ }
 
 /*----------------------------------------------------------
