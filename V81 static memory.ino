@@ -436,8 +436,8 @@ void loop() {}
 
 
 /*----------------------------------------------------------
-Sketch uses 24938 bytes (77%) of program storage space. Maximum is 32256 bytes.
-Global variables use 833 bytes (40%) of dynamic memory, leaving 1215 bytes for local variables. Maximum is 2048 bytes.
+Sketch uses 25006 bytes (77%) of program storage space. Maximum is 32256 bytes.
+Global variables use 1241 bytes (60%) of dynamic memory, leaving 807 bytes for local variables. Maximum is 2048 bytes.
 
 Adjustment done in RTOSConfig.h file
 
